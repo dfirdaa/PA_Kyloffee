@@ -56,7 +56,8 @@ a {
 .brand {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 21px;
     text-decoration: none;
     color: var(--kyloffee-text);
     margin-bottom: 64px;
@@ -68,14 +69,11 @@ a {
     letter-spacing: -1.2px;
 }
 
-.brand-icon {
-    width: 54px;
-    height: 54px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 32px;
-    filter: grayscale(1);
+.brand-logo-mark {
+    width: 68px;
+    height: 48px;
+    object-fit: contain;
+    filter: brightness(0) saturate(100%) sepia(28%) saturate(1147%) hue-rotate(333deg) brightness(51%) contrast(102%);
 }
 
 .owner-nav {
@@ -125,6 +123,7 @@ a {
     width: 22px;
     text-align: center;
     font-size: 17px;
+    line-height: 1;
 }
 
 .owner-logout {
@@ -145,6 +144,49 @@ a {
     padding: 0 52px;
     background: rgba(255, 252, 249, 0.94);
     border-bottom: 1px solid var(--kyloffee-line);
+}
+
+.owner-topbar--spread {
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.topbar-button {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    border-radius: 6px;
+    border: 1px solid #ded1c8;
+    padding: 0 18px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.topbar-button--dark {
+    border-color: var(--kyloffee-brown);
+    background: var(--kyloffee-brown);
+    color: #fff;
+}
+
+.topbar-button--light {
+    background: #fff;
+    color: #3b2b25;
+}
+
+.topbar-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.78;
 }
 
 .owner-identity {
@@ -179,6 +221,23 @@ a {
 
 .page-heading {
     margin-bottom: 28px;
+}
+
+.back-link {
+    width: max-content;
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 14px;
+    color: var(--kyloffee-brown);
+    font-size: 14px;
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.back-link:hover {
+    text-decoration: underline;
 }
 
 .page-heading--row {
@@ -306,6 +365,18 @@ a {
         padding: 0 26px;
     }
 
+    .owner-topbar--spread {
+        align-items: flex-start;
+        height: auto;
+        padding-top: 18px;
+        padding-bottom: 18px;
+        flex-direction: column-reverse;
+    }
+
+    .topbar-actions {
+        flex-wrap: wrap;
+    }
+
     .page-heading--row {
         flex-direction: column;
     }
@@ -347,6 +418,10 @@ a {
     .owner-topbar {
         height: 58px;
         justify-content: flex-start;
+    }
+
+    .owner-topbar--spread {
+        height: auto;
     }
 
     .owner-content {

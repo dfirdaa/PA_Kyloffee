@@ -62,7 +62,9 @@
                                                     {% if menu.image %}
                                                         <img src="{{ menu_image_url(menu.image) }}" alt="{{ menu.name }}" class="product-thumb">
                                                     {% else %}
-                                                        <span class="product-thumb product-thumb--empty">☕</span>
+                                                        <span class="product-thumb product-thumb--empty">
+                                                            <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
+                                                        </span>
                                                     {% endif %}
                                                     <div>
                                                         <strong>{{ menu.name }}</strong>
@@ -81,14 +83,16 @@
                                                 {% endif %}
                                             </td>
                                             <td class="action-cell">
-                                                <a href="{{ url_for('owner_menu_edit', menu_id=menu.id) }}" class="icon-button" title="Edit menu">✎</a>
+                                                <a href="{{ url_for('owner_menu_edit', menu_id=menu.id) }}" class="icon-button" title="Edit menu">&#9998;</a>
                                             </td>
                                         </tr>
                                     {% endfor %}
                                 {% else %}
                                     <tr>
                                         <td colspan="6" class="empty-state">
-                                            <div class="empty-state__icon">☕</div>
+                                            <div class="empty-state__icon">
+                                                <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
+                                            </div>
                                             <strong>Belum ada menu.</strong>
                                             <p>Silakan tambahkan menu baru lewat tombol Add New Menu.</p>
                                         </td>
@@ -104,8 +108,8 @@
                     <footer class="table-footer">
                         <p>Menampilkan {{ start_item }} sampai {{ end_item }} dari {{ total }} menu</p>
                         <div class="pagination">
-                            <a class="page-button {% if page <= 1 %}disabled{% endif %}" href="{{ url_for('owner_menu', page=page-1) if page > 1 else '#' }}">‹</a>
-                            <a class="page-button {% if page >= total_pages %}disabled{% endif %}" href="{{ url_for('owner_menu', page=page+1) if page < total_pages else '#' }}">›</a>
+                            <a class="page-button {% if page <= 1 %}disabled{% endif %}" href="{{ url_for('owner_menu', page=page-1) if page > 1 else '#' }}">&lsaquo;</a>
+                            <a class="page-button {% if page >= total_pages %}disabled{% endif %}" href="{{ url_for('owner_menu', page=page+1) if page < total_pages else '#' }}">&rsaquo;</a>
                         </div>
                     </footer>
                 </section>

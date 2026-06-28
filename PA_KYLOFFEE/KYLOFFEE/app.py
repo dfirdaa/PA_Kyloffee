@@ -520,95 +520,51 @@ def get_ordered_menu_categories(categories):
     return ordered_categories + extra_categories
 
 
+def format_report_datetime(value):
+    month_names = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "Mei",
+        "Jun",
+        "Jul",
+        "Agu",
+        "Sep",
+        "Okt",
+        "Nov",
+        "Des",
+    ]
+    return f"{value.day} {month_names[value.month - 1]} {value.year} {value:%H:%M} WIB"
+
+
 def build_financial_report():
+    now = datetime.now()
     return {
-        "period": "1 Okt - 31 Okt 2023",
-        "printed_at": "1 Nov 2023 08:30 WIB",
+        "period": "Belum ada transaksi",
+        "calendar_label": "Pilih periode",
+        "printed_at": format_report_datetime(now),
+        "has_data": False,
         "dashboard_metrics": [
-            {
-                "label": "TOTAL PENDAPATAN BULAN INI",
-                "value": "Rp 12.450.000",
-                "trend": "+12.5% dari bulan lalu",
-                "tone": "positive",
-            },
-            {
-                "label": "TOTAL BIAYA OPERASIONAL",
-                "value": "Rp 5.200.000",
-                "trend": "-2.1% dari bulan lalu",
-                "tone": "negative",
-            },
-            {
-                "label": "LABA BERSIH",
-                "value": "Rp 7.250.000",
-                "trend": "+15.2% dari bulan lalu",
-                "tone": "positive",
-            },
-            {
-                "label": "TOTAL TRANSAKSI",
-                "value": "842",
-                "trend": "+4.2% dari bulan lalu",
-                "tone": "positive",
-            },
-            {
-                "label": "PENDAPATAN HARI INI",
-                "value": "Rp 450.000",
-                "trend": "",
-                "tone": "neutral",
-            },
-            {
-                "label": "RATA-RATA PENDAPATAN HARIAN",
-                "value": "Rp 415.000",
-                "trend": "",
-                "tone": "neutral",
-            },
-        ],
-        "sales_hours": [
-            {"time": "08:00", "height": 34, "active": False},
-            {"time": "10:00", "height": 50, "active": False},
-            {"time": "12:00", "height": 82, "active": True},
-            {"time": "14:00", "height": 98, "active": True},
-            {"time": "16:00", "height": 92, "active": True},
-            {"time": "18:00", "height": 64, "active": True},
-            {"time": "20:00", "height": 44, "active": False},
-            {"time": "22:00", "height": 28, "active": False},
-        ],
-        "recent_transactions": [
-            {"id": "#POS-8492", "time": "10:42 AM", "items": "3 Item", "customer": "Jordan Smith", "total": "Rp 32.500", "status": "Selesai"},
-            {"id": "#POS-8491", "time": "10:38 AM", "items": "1 Item", "customer": "Elena Rodriguez", "total": "Rp 6.750", "status": "Selesai"},
-            {"id": "#POS-8490", "time": "10:25 AM", "items": "5 Item", "customer": "Marcus Thorne", "total": "Rp 54.200", "status": "Menunggu"},
-        ],
-        "monthly_summary": [
-            {"month": "Agustus 2023", "income": "Rp 38.500.000", "profit": "Rp 22.100.000", "highlight": False},
-            {"month": "September 2023", "income": "Rp 40.200.000", "profit": "Rp 24.500.000", "highlight": False},
-            {"month": "Oktober 2023", "income": "Rp 42.850.250", "profit": "Rp 27.430.250", "highlight": True},
-        ],
-        "daily_income": [
-            {"date": "12 Okt 2023", "trx": "124", "income": "Rp 1.450.000"},
-            {"date": "11 Okt 2023", "trx": "118", "income": "Rp 1.320.000"},
-            {"date": "10 Okt 2023", "trx": "132", "income": "Rp 1.510.000"},
-            {"date": "09 Okt 2023", "trx": "105", "income": "Rp 1.150.000"},
+            {"label": "Total Pendapatan", "value": "Rp 0", "trend": "Belum ada transaksi", "tone": "neutral"},
+            {"label": "Total Biaya Operasional", "value": "Rp 0", "trend": "", "tone": "neutral"},
+            {"label": "Laba Bersih", "value": "Rp 0", "trend": "", "tone": "neutral"},
+            {"label": "Total Transaksi", "value": "0", "trend": "", "tone": "neutral"},
+            {"label": "Pendapatan Hari Ini", "value": "Rp 0", "trend": "", "tone": "neutral"},
+            {"label": "Rata-rata Pendapatan Harian", "value": "Rp 0", "trend": "", "tone": "neutral"},
         ],
         "print_summary": [
-            {"label": "Total Pendapatan (Revenue)", "value": "Rp 42.850.250", "tone": "normal"},
-            {"label": "Total Biaya Operasional", "value": "Rp 18.500.000", "tone": "danger"},
-            {"label": "Total Transaksi", "value": "3.124", "tone": "normal"},
-            {"label": "Rata-rata Pendapatan Harian", "value": "Rp 1.382.266", "tone": "normal"},
+            {"label": "Total Pendapatan (Revenue)", "value": "Rp 0", "tone": "normal"},
+            {"label": "Total Biaya Operasional", "value": "Rp 0", "tone": "danger"},
+            {"label": "Total Transaksi", "value": "0", "tone": "normal"},
+            {"label": "Rata-rata Pendapatan Harian", "value": "Rp 0", "tone": "normal"},
         ],
-        "net_profit": "Rp 24.350.250",
-        "daily_details": [
-            {"date": "25 Okt 2023", "transactions": "102", "income": "Rp 1.450.000", "cost": "Rp 600.000", "profit": "Rp 850.000"},
-            {"date": "26 Okt 2023", "transactions": "98", "income": "Rp 1.320.000", "cost": "Rp 580.000", "profit": "Rp 740.000"},
-            {"date": "27 Okt 2023", "transactions": "115", "income": "Rp 1.680.000", "cost": "Rp 620.000", "profit": "Rp 1.060.000"},
-            {"date": "28 Okt 2023", "transactions": "140", "income": "Rp 2.100.000", "cost": "Rp 750.000", "profit": "Rp 1.350.000"},
-            {"date": "29 Okt 2023", "transactions": "135", "income": "Rp 1.950.000", "cost": "Rp 700.000", "profit": "Rp 1.250.000"},
-        ],
-        "daily_totals": {"transactions": "590", "income": "Rp 8.500.000", "cost": "Rp 3.250.000", "profit": "Rp 5.250.000"},
-        "print_transactions": [
-            {"id": "#ORD-3124", "date": "31 Okt 2023", "time": "14:30", "customer": "Bpk. Budi", "method": "QRIS", "total": "Rp 85.000", "status": "Selesai"},
-            {"id": "#ORD-3123", "date": "31 Okt 2023", "time": "14:15", "customer": "Ibu Siti", "method": "Cash", "total": "Rp 45.000", "status": "Selesai"},
-            {"id": "#ORD-3122", "date": "31 Okt 2023", "time": "13:50", "customer": "Guest", "method": "QRIS", "total": "Rp 120.000", "status": "Selesai"},
-            {"id": "#ORD-3121", "date": "31 Okt 2023", "time": "13:20", "customer": "Andi", "method": "Kartu Debit", "total": "Rp 65.000", "status": "Dibatalkan"},
-        ],
+        "net_profit": "Rp 0",
+        "net_profit_trend": "Belum ada data bulan lalu",
+        "daily_details": [],
+        "daily_totals": {"transactions": "0", "income": "Rp 0", "cost": "Rp 0", "profit": "Rp 0"},
+        "recent_transactions": [],
+        "print_transactions": [],
     }
 
 
