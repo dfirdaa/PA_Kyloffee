@@ -2,27 +2,33 @@
 {% block title %}Kyloffee - Pilih Role{% endblock %}
 {% block body %}
 <main class="auth-page opening-page">
-    <section class="opening-card">
-        <div class="brand-center">
-            <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="Kyloffee" class="brand-logo">
-            <h1>Kyloffee</h1>
-            <p>Pilih akses untuk masuk ke sistem Kyloffee.</p>
+    <section class="opening-layout">
+        <div class="opening-copy">
+            <h1>Selamat Datang.</h1>
+            <p>Silahkan pilih peran anda untuk memulai sistem<br>POS Kyloffee</p>
         </div>
 
         <div class="role-grid">
             <a href="{{ url_for('register_owner') }}" class="role-card">
-                <span class="role-icon">♛</span>
-                <strong>Owner</strong>
-                <small>Daftar sebagai pemilik toko</small>
+                <span class="role-copy">
+                    <strong>Owner</strong>
+                    <small>Buat toko baru dan kelola menu,<br>inventaris, serta staf Anda.</small>
+                </span>
+                <span class="role-arrow" aria-hidden="true">&rarr;</span>
             </a>
             <a href="{{ url_for('register_staff') }}" class="role-card">
-                <span class="role-icon">☕</span>
-                <strong>Staff</strong>
-                <small>Daftar sebagai kasir/staff</small>
+                <span class="role-copy">
+                    <strong>Staff</strong>
+                    <small>Bergabung dengan tim yang sudah<br>ada? Masukkan kode undangan dari<br>Owner Anda.</small>
+                </span>
+                <span class="role-arrow" aria-hidden="true">&rarr;</span>
             </a>
         </div>
 
-        <p class="auth-switch">Sudah punya akun? <a href="{{ url_for('login') }}">Login</a></p>
+        <div class="opening-login-row">
+            <span>Sudah punya akun?</span>
+            <a href="{{ url_for('login') }}">MASUK KE DASHBOARD</a>
+        </div>
     </section>
 </main>
 {% endblock %}

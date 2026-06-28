@@ -1,52 +1,53 @@
 {% extends 'base.html' %}
 {% block title %}Registrasi Staff Kyloffee{% endblock %}
 {% block body %}
-<main class="auth-page">
-    <section class="auth-card auth-card--wide">
-        <div class="brand-center brand-center--small">
-            <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="Kyloffee" class="brand-logo">
-            <h1>Kyloffee</h1>
-            <p>Lengkapi data diri untuk registrasi sebagai Staff.</p>
+<main class="auth-page auth-form-page">
+    <section class="auth-shell auth-shell--register">
+        <div class="auth-brand">
+            <div class="auth-brand-lockup">
+                <h1>Kyloffee</h1>
+                <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="Kyloffee" class="auth-brand-logo">
+            </div>
+            <p class="auth-brand-subtitle-large">Create Your Account</p>
         </div>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="message-stack">
-                    {% for category, message in messages %}
-                        <div class="message message--{{ category }}">{{ message }}</div>
-                    {% endfor %}
+        <section class="auth-card auth-card--register">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="message-stack">
+                        {% for category, message in messages %}
+                            <div class="message message--{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <form action="{{ url_for('register_staff') }}" method="POST" class="auth-form auth-form--register">
+                <input type="hidden" name="invitation_code" value="KYLOFFEE-STAFF">
+
+                <div class="form-field">
+                    <label for="full_name">Full name</label>
+                    <input type="text" id="full_name" name="full_name" value="{{ full_name|default('', true) }}" placeholder="ex: Firda Dewi Amalia" autocomplete="name" required>
                 </div>
-            {% endif %}
-        {% endwith %}
 
-        <form action="{{ url_for('register_staff') }}" method="POST" class="auth-form">
-            <div class="form-field">
-                <label for="full_name">Nama Lengkap</label>
-                <input type="text" id="full_name" name="full_name" value="{{ full_name|default('', true) }}" placeholder="Nama lengkap" autocomplete="name" required>
-            </div>
-
-            <div class="form-field">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" value="{{ email|default('', true) }}" placeholder="Email" autocomplete="email" required>
-            </div>
-
-            <div class="form-field">
-                <label for="invitation_code">Kode Undangan Staff</label>
-                <input type="text" id="invitation_code" name="invitation_code" placeholder="KYLOFFEE-STAFF" required>
-            </div>
-
-            <div class="form-field">
-                <label for="password">Password</label>
-                <div class="password-wrap">
-                    <input type="password" id="password" name="password" placeholder="Minimal 6 karakter" autocomplete="new-password" required>
-                    <button type="button" class="password-toggle" data-toggle-password="password" aria-label="Lihat password">👁</button>
+                <div class="form-field">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" value="{{ email|default('', true) }}" placeholder="dewifirdawork@gmail.com" autocomplete="email" required>
                 </div>
-            </div>
 
-            <button type="submit" class="auth-button">Daftar <span>→</span></button>
-        </form>
+                <div class="form-field">
+                    <label for="password">Password</label>
+                    <div class="password-wrap">
+                        <input type="password" id="password" name="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="new-password" required>
+                        <button type="button" class="password-toggle" data-toggle-password="password" aria-label="Lihat password">
+                            <span class="eye-icon" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </div>
 
-        <p class="auth-switch">Sudah punya akun? <a href="{{ url_for('login') }}">Login</a></p>
+                <button type="submit" class="auth-button">Daftar <span aria-hidden="true">&rarr;</span></button>
+            </form>
+        </section>
     </section>
 </main>
 {% endblock %}

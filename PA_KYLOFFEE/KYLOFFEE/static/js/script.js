@@ -7,7 +7,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             const isPassword = input.type === "password";
             input.type = isPassword ? "text" : "password";
-            button.textContent = isPassword ? "🙈" : "👁";
+            button.classList.toggle("is-visible", isPassword);
             button.setAttribute("aria-label", isPassword ? "Sembunyikan password" : "Lihat password");
         });
     });
