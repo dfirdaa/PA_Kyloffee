@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add New Menu - Kyloffee</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu_form.css') }}">
+</head>
+<body>
+    <div class="owner-page">
+        {% include 'partials/owner_sidebar.html' %}
+
+        <main class="owner-main">
+            <header class="owner-topbar">
+                <div class="owner-identity">Owner : <strong>{{ owner_name }}</strong></div>
+            </header>
+
+            <section class="owner-content owner-content--form">
+                <div class="page-heading">
+                    <p class="breadcrumb">Manajemen Menu &gt; Daftar Menu &gt; Add New Menu</p>
+                    <h1>Add New Menu</h1>
+                    <p class="page-subtitle">Lengkapi informasi di bawah ini untuk mendaftarkan menu ke dalam sistem.</p>
+                </div>
+
+                {% if errors %}
+                    <div class="alert alert--error">
+                        {% for error in errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <form action="{{ url_for('owner_menu_add') }}" method="POST" enctype="multipart/form-data" class="product-form">
+                    <div class="form-card">
+                        <div class="form-card__header">
+                            <h2>Informasi Produk</h2>
+                        </div>
+
+                        <div class="form-card__body form-grid">
+                            <div class="upload-column">
+                                <label class="field-label">Foto Produk</label>
+                                <label class="upload-box" for="imageInput" data-upload-box>
+                                    <input type="file" name="image" id="imageInput" accept="image/png,image/jpeg,image/jpg,image/webp">
+                                    <img src="" alt="Preview foto produk" class="upload-preview" data-upload-preview hidden>
+                                    <span class="upload-placeholder" data-upload-placeholder>
+                                        <span class="upload-icon">▣</span>
+                                        <strong>Click to upload image</strong>
+                                        <small>or drag and drop here</small>
+                                        <em>PNG, JPG, WEBP up to 5MB</em>
+                                    </span>
+                                </label>
+                            </div>
+
+                            <div class="fields-column">
+                                <div class="field-group field-group--full">
+                                    <label for="name">Nama Item <span>*</span></label>
+                                    <input type="text" id="name" name="name" value="{{ form_data.get('name', '') }}" placeholder="Contoh: Kopi Susu Gula Aren" required>
+                                </div>
+
+                                <div class="field-group field-group--full">
+                                    <label for="category">Kategori <span>*</span></label>
+                                    <select id="category" name="category" required>
+                                        <option value="">Pilih kategori</option>
+                                        {% for category in menu_categories %}
+                                            <option value="{{ category }}" {% if form_data.get('category') == category %}selected{% endif %}>{{ category }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <div class="field-row">
+                                    <div class="field-group">
+                                        <label for="code">SKU / ID Item <span>*</span></label>
+                                        <input type="text" id="code" name="code" value="{{ form_data.get('code', '') }}" placeholder="SIG-001" required>
+                                    </div>
+                                    <div class="field-group">
+                                        <label for="price">Harga Satuan <span>*</span></label>
+                                        <input type="number" id="price" name="price" value="{{ form_data.get('price', '') }}" placeholder="22000" min="500" required>
+                                    </div>
+                                    <div class="field-group">
+                                        <label for="stock">Stok Tersedia <span>*</span></label>
+                                        <input type="number" id="stock" name="stock" value="{{ form_data.get('stock', '') }}" placeholder="50" min="0" required>
+                                    </div>
+                                </div>
+
+                                <div class="field-group field-group--full">
+                                    <label for="description">Deskripsi <span>*</span></label>
+                                    <textarea id="description" name="description" placeholder="Masukkan deskripsi produk, catatan rasa, atau bahan-bahan..." required>{{ form_data.get('description', '') }}</textarea>
+                                </div>
+
+                                {% set active_value = form_data.get('is_active', true) %}
+                                <div class="status-field">
+                                    <input type="hidden" name="is_active" id="isActiveValue" value="{{ '1' if active_value else '0' }}">
+                                    <button type="button" class="toggle-switch {% if active_value %}is-on{% endif %}" id="statusToggle" aria-pressed="{{ 'true' if active_value else 'false' }}">
+                                        <span></span>
+                                    </button>
+                                    <span>Menu Aktif</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-card__footer">
+                            <a href="{{ url_for('owner_menu') }}" class="secondary-button">Batal</a>
+                            <button type="submit" class="submit-button">▣ Simpan Menu</button>
+                        </div>
+                    </div>
+                </form>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/owner_menu_form.js') }}"></script>
+</body>
+</html>

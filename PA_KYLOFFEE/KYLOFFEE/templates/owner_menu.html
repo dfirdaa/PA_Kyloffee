@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Management Menu - Kyloffee</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu.css') }}">
+</head>
+<body>
+    <div class="owner-page">
+        {% include 'partials/owner_sidebar.html' %}
+
+        <main class="owner-main">
+            <header class="owner-topbar">
+                <div class="owner-identity">Owner : <strong>{{ owner_name }}</strong></div>
+            </header>
+
+            <section class="owner-content">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="flash-stack">
+                            {% for category, message in messages %}
+                                <div class="flash flash--{{ category }}">{{ message }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                <div class="page-heading page-heading--row">
+                    <div>
+                        <p class="breadcrumb">Manajemen Menu &gt; Daftar Menu</p>
+                        <h1>Daftar Menu</h1>
+                        <p class="page-subtitle">Daftar produk minuman dan makanan yang tersedia untuk dipesan pelanggan.</p>
+                    </div>
+
+                    <a href="{{ url_for('owner_menu_add') }}" class="primary-button">
+                        <span>+</span>
+                        Add New Menu
+                    </a>
+                </div>
+
+                <section class="menu-table-card" aria-label="Daftar menu Kyloffee">
+                    <div class="table-responsive">
+                        <table class="menu-table">
+                            <thead>
+                                <tr>
+                                    <th>Nama Menu</th>
+                                    <th>Kategori</th>
+                                    <th>Kode Menu</th>
+                                    <th>Harga Satuan</th>
+                                    <th>Status</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if menus %}
+                                    {% for menu in menus %}
+                                        <tr>
+                                            <td>
+                                                <div class="product-cell">
+                                                    {% if menu.image %}
+                                                        <img src="{{ menu_image_url(menu.image) }}" alt="{{ menu.name }}" class="product-thumb">
+                                                    {% else %}
+                                                        <span class="product-thumb product-thumb--empty">☕</span>
+                                                    {% endif %}
+                                                    <div>
+                                                        <strong>{{ menu.name }}</strong>
+                                                        <span>Stok: {{ menu.stock }}</span>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>{{ menu.category }}</td>
+                                            <td class="mono">{{ menu.code }}</td>
+                                            <td class="mono">Rp {{ "{:,.0f}".format(menu.price|int).replace(",", ".") }}</td>
+                                            <td>
+                                                {% if menu.is_active %}
+                                                    <span class="status-badge status-badge--active">Aktif</span>
+                                                {% else %}
+                                                    <span class="status-badge status-badge--inactive">Nonaktif</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="action-cell">
+                                                <a href="{{ url_for('owner_menu_edit', menu_id=menu.id) }}" class="icon-button" title="Edit menu">✎</a>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="6" class="empty-state">
+                                            <div class="empty-state__icon">☕</div>
+                                            <strong>Belum ada menu.</strong>
+                                            <p>Silakan tambahkan menu baru lewat tombol Add New Menu.</p>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% set start_item = ((page - 1) * per_page) + 1 if total > 0 else 0 %}
+                    {% set end_item = page * per_page if page * per_page < total else total %}
+
+                    <footer class="table-footer">
+                        <p>Menampilkan {{ start_item }} sampai {{ end_item }} dari {{ total }} menu</p>
+                        <div class="pagination">
+                            <a class="page-button {% if page <= 1 %}disabled{% endif %}" href="{{ url_for('owner_menu', page=page-1) if page > 1 else '#' }}">‹</a>
+                            <a class="page-button {% if page >= total_pages %}disabled{% endif %}" href="{{ url_for('owner_menu', page=page+1) if page < total_pages else '#' }}">›</a>
+                        </div>
+                    </footer>
+                </section>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

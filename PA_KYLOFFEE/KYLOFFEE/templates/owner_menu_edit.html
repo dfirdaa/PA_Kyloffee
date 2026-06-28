@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Update Menu - Kyloffee</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu_form.css') }}">
+</head>
+<body>
+    <div class="owner-page">
+        {% include 'partials/owner_sidebar.html' %}
+
+        <main class="owner-main">
+            <header class="owner-topbar">
+                <div class="owner-identity">Owner : <strong>{{ owner_name }}</strong></div>
+            </header>
+
+            <section class="owner-content owner-content--form">
+                <div class="page-heading">
+                    <p class="breadcrumb">Manajemen Menu &gt; Daftar Menu &gt; Update Menu</p>
+                    <h1>Update Menu</h1>
+                    <p class="page-subtitle">Perbarui detail item menu di bawah ini.</p>
+                </div>
+
+                {% if errors %}
+                    <div class="alert alert--error">
+                        {% for error in errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                {% set current_name = form_data.get('name') if form_data else menu.name %}
+                {% set current_category = form_data.get('category') if form_data else menu.category %}
+                {% set current_code = form_data.get('code') if form_data else menu.code %}
+                {% set current_price = form_data.get('price') if form_data else menu.price %}
+                {% set current_stock = form_data.get('stock') if form_data else menu.stock %}
+                {% set current_description = form_data.get('description') if form_data else menu.description %}
+                {% set current_active = form_data.get('is_active') if form_data else menu.is_active %}
+                {% set current_image = menu.image if menu.image else '' %}
+
+                <form action="{{ url_for('owner_menu_edit', menu_id=menu.id) }}" method="POST" enctype="multipart/form-data" class="product-form">
+                    <div class="form-card">
+                        <div class="form-card__header">
+                            <h2>Informasi Produk</h2>
+                        </div>
+
+                        <div class="form-card__body form-grid">
+                            <div class="upload-column">
+                                <label class="field-label">Foto Produk</label>
+                                <label class="upload-box {% if current_image %}has-image{% endif %}" for="imageInput" data-upload-box>
+                                    <input type="file" name="image" id="imageInput" accept="image/png,image/jpeg,image/jpg,image/webp">
+                                    <img src="{{ menu_image_url(current_image) if current_image else '' }}" alt="Preview foto produk" class="upload-preview" data-upload-preview {% if not current_image %}hidden{% endif %}>
+                                    <span class="upload-placeholder" data-upload-placeholder {% if current_image %}hidden{% endif %}>
+                                        <span class="upload-icon">▣</span>
+                                        <strong>Click to upload image</strong>
+                                        <small>or drag and drop here</small>
+                                        <em>PNG, JPG, WEBP up to 5MB</em>
+                                    </span>
+                                </label>
+                                {% if current_image %}
+                                    <p class="upload-note">Klik area gambar untuk mengganti foto.</p>
+                                {% endif %}
+                            </div>
+
+                            <div class="fields-column">
+                                <div class="field-group field-group--full">
+                                    <label for="name">Nama Item <span>*</span></label>
+                                    <input type="text" id="name" name="name" value="{{ current_name }}" required>
+                                </div>
+
+                                <div class="field-group field-group--full">
+                                    <label for="category">Kategori <span>*</span></label>
+                                    <select id="category" name="category" required>
+                                        {% for category in menu_categories %}
+                                            <option value="{{ category }}" {% if current_category == category %}selected{% endif %}>{{ category }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <div class="field-row">
+                                    <div class="field-group">
+                                        <label for="code">SKU / ID Item <span>*</span></label>
+                                        <input type="text" id="code" name="code" value="{{ current_code }}" required>
+                                    </div>
+                                    <div class="field-group">
+                                        <label for="price">Harga Satuan <span>*</span></label>
+                                        <input type="number" id="price" name="price" value="{{ current_price }}" min="500" required>
+                                    </div>
+                                    <div class="field-group">
+                                        <label for="stock">Stok Tersedia <span>*</span></label>
+                                        <input type="number" id="stock" name="stock" value="{{ current_stock }}" min="0" required>
+                                    </div>
+                                </div>
+
+                                <div class="field-group field-group--full">
+                                    <label for="description">Deskripsi <span>*</span></label>
+                                    <textarea id="description" name="description" required>{{ current_description }}</textarea>
+                                </div>
+
+                                <div class="status-field">
+                                    <input type="hidden" name="is_active" id="isActiveValue" value="{{ '1' if current_active else '0' }}">
+                                    <button type="button" class="toggle-switch {% if current_active %}is-on{% endif %}" id="statusToggle" aria-pressed="{{ 'true' if current_active else 'false' }}">
+                                        <span></span>
+                                    </button>
+                                    <span>Menu Aktif</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-card__footer">
+                            <a href="{{ url_for('owner_menu') }}" class="secondary-button">Batal</a>
+                            <button type="submit" class="submit-button">▣ Simpan Perubahan</button>
+                        </div>
+                    </div>
+                </form>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/owner_menu_form.js') }}"></script>
+</body>
+</html>

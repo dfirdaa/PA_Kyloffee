@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Reports - Kyloffee</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu.css') }}">
+</head>
+<body>
+    <div class="owner-page">
+        {% include 'partials/owner_sidebar.html' %}
+        <main class="owner-main">
+            <header class="owner-topbar">
+                <div class="owner-identity">Owner : <strong>{{ owner_name }}</strong></div>
+            </header>
+            <section class="owner-content">
+                <div class="page-heading page-heading--row">
+                    <div>
+                        <p class="breadcrumb">Owner &gt; Financial Reports</p>
+                        <h1>Financial Reports</h1>
+                        <p class="page-subtitle">Periode {{ report.period }}. Data ini masih contoh untuk tampilan awal.</p>
+                    </div>
+                    <a href="{{ url_for('owner_reports_print') }}" class="primary-button">Print Report</a>
+                </div>
+
+                <div class="report-grid">
+                    {% for item in report.dashboard_metrics %}
+                        <article class="report-card">
+                            <span>{{ item.label }}</span>
+                            <strong>{{ item.value }}</strong>
+                            {% if item.trend %}<small>{{ item.trend }}</small>{% endif %}
+                        </article>
+                    {% endfor %}
+                </div>
+
+                <section class="menu-table-card report-table-wrap">
+                    <div class="table-responsive">
+                        <table class="menu-table">
+                            <thead><tr><th>ID</th><th>Waktu</th><th>Customer</th><th>Total</th><th>Status</th></tr></thead>
+                            <tbody>
+                                {% for trx in report.recent_transactions %}
+                                    <tr>
+                                        <td class="mono">{{ trx.id }}</td>
+                                        <td>{{ trx.time }}</td>
+                                        <td>{{ trx.customer }}</td>
+                                        <td>{{ trx.total }}</td>
+                                        <td><span class="status-badge status-badge--active">{{ trx.status }}</span></td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

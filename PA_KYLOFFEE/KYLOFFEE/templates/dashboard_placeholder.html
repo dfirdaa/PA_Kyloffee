@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}{{ page_title|default('Dashboard') }} - Kyloffee{% endblock %}
+{% block body %}
+<main class="auth-page">
+    <section class="auth-card dashboard-card">
+        <div class="brand-center brand-center--small">
+            <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="Kyloffee" class="brand-logo">
+            <h1>{{ page_title|default('Dashboard') }}</h1>
+            <p>Halo, <strong>{{ full_name }}</strong></p>
+            <p>Role: <strong>{{ role }}</strong></p>
+        </div>
+        <a href="{{ url_for('owner_menu') if role == 'Owner' else url_for('pos') }}" class="auth-button auth-button--link">Lanjut</a>
+        <a href="{{ url_for('logout') }}" class="secondary-link">Logout</a>
+    </section>
+</main>
+{% endblock %}

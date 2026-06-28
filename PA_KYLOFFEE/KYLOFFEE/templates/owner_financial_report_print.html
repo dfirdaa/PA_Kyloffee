@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Print Financial Report - Kyloffee</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="print-page">
+    <main class="print-sheet">
+        <header class="print-header">
+            <div>
+                <h1>Kyloffee Financial Report</h1>
+                <p>Periode: {{ report.period }}</p>
+                <p>Dicetak: {{ report.printed_at }}</p>
+            </div>
+            <button onclick="window.print()" class="small-button no-print">Print</button>
+        </header>
+
+        <section class="print-summary-grid">
+            {% for item in report.print_summary %}
+                <article>
+                    <span>{{ item.label }}</span>
+                    <strong>{{ item.value }}</strong>
+                </article>
+            {% endfor %}
+        </section>
+
+        <h2>Detail Harian</h2>
+        <table class="print-table">
+            <thead><tr><th>Tanggal</th><th>Transaksi</th><th>Pendapatan</th><th>Biaya</th><th>Laba</th></tr></thead>
+            <tbody>
+                {% for item in report.daily_details %}
+                    <tr>
+                        <td>{{ item.date }}</td>
+                        <td>{{ item.transactions }}</td>
+                        <td>{{ item.income }}</td>
+                        <td>{{ item.cost }}</td>
+                        <td>{{ item.profit }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </main>
+</body>
+</html>

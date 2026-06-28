@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}POS Staff - Kyloffee{% endblock %}
+{% block body %}
+<main class="pos-page">
+    <header class="pos-header">
+        <div>
+            <h1>Kyloffee POS</h1>
+            <p>Shift: {{ shift }}</p>
+        </div>
+        <a href="{{ url_for('logout') }}" class="small-button">Logout</a>
+    </header>
+
+    <section class="pos-layout">
+        <aside class="pos-categories">
+            <h2>Kategori</h2>
+            {% if menu_categories %}
+                {% for category in menu_categories %}
+                    <span>{{ category }}</span>
+                {% endfor %}
+            {% else %}
+                <p>Belum ada kategori aktif.</p>
+            {% endif %}
+        </aside>
+
+        <section class="pos-products">
+            <div class="section-title">
+                <h2>Menu Aktif</h2>
+                <p>Menu yang sudah dibuat owner dan berstatus aktif.</p>
+            </div>
+
+            <div class="product-grid-pos">
+                {% if products %}
+                    {% for product in products %}
+                        <article class="pos-product-card">
+                            {% if product.image %}
+                                <img src="{{ menu_image_url(product.image) }}" alt="{{ product.name }}">
+                            {% else %}
+                                <div class="pos-product-empty">☕</div>
+                            {% endif %}
+                            <h3>{{ product.name }}</h3>
+                            <p>{{ product.description or product.category }}</p>
+                            <strong>Rp {{ "{:,.0f}".format(product.price|int).replace(",", ".") }}</strong>
+                            <small>Stok: {{ product.stock }}</small>
+                        </article>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-pos">
+                        <strong>Belum ada menu aktif.</strong>
+                        <p>Tambahkan menu dari halaman Owner terlebih dahulu.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+    </section>
+</main>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}Registrasi Owner Kyloffee{% endblock %}
+{% block body %}
+<main class="auth-page">
+    <section class="auth-card auth-card--wide">
+        <div class="brand-center brand-center--small">
+            <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="Kyloffee" class="brand-logo">
+            <h1>Kyloffee</h1>
+            <p>Lengkapi data diri untuk registrasi sebagai Owner.</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="message-stack">
+                    {% for category, message in messages %}
+                        <div class="message message--{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('register_owner') }}" method="POST" class="auth-form">
+            <div class="form-field">
+                <label for="full_name">Nama Lengkap</label>
+                <input type="text" id="full_name" name="full_name" value="{{ full_name|default('', true) }}" placeholder="Nama lengkap" autocomplete="name" required>
+            </div>
+
+            <div class="form-field">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" value="{{ email|default('', true) }}" placeholder="Email" autocomplete="email" required>
+            </div>
+
+            <div class="form-field">
+                <label for="password">Password</label>
+                <div class="password-wrap">
+                    <input type="password" id="password" name="password" placeholder="Minimal 6 karakter" autocomplete="new-password" required>
+                    <button type="button" class="password-toggle" data-toggle-password="password" aria-label="Lihat password">👁</button>
+                </div>
+            </div>
+
+            <button type="submit" class="auth-button">Daftar <span>→</span></button>
+        </form>
+
+        <p class="auth-switch">Sudah punya akun? <a href="{{ url_for('login') }}">Login</a></p>
+    </section>
+</main>
+{% endblock %}
