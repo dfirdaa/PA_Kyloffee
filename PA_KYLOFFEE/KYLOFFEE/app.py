@@ -663,19 +663,22 @@ def login():
 
         user = get_user_by_email(email)
         if user is None or not check_password_hash(user["password_hash"], password):
-            flash("Email atau password salah.", "error")
+            flash("Email atau password salah. Cek lagi email yang terdaftar dan password saat registrasi.", "error")
             return render_template("login.html", email=email)
 
+        user_role = str(user["role"] or "").strip().lower()
         session.clear()
         session["user_id"] = user["id"]
         session["full_name"] = user["full_name"]
         session["name"] = user["full_name"]
         session["username"] = user["full_name"]
-        session["role"] = user["role"].lower()
+        session["role"] = user_role
         flash(f"Login sebagai {session['role'].title()} berhasil.", "success")
         return redirect_for_role()
 
-    return render_template("login.html")
+    registered_email = session.pop("registered_email", "")
+    query_email = request.args.get("email", "").strip().lower()
+    return render_template("login.html", email=query_email or registered_email)
 
 
 def register_user(role):
@@ -722,7 +725,8 @@ def register_user(role):
 
     role_label = "Owner" if role == "owner" else "Staff"
     flash(f"Registrasi {role_label} berhasil, silakan login.", "success")
-    return redirect(url_for("login"))
+    session["registered_email"] = email
+    return redirect(url_for("login", email=email))
 
 
 @app.route("/register/owner", methods=["GET", "POST"])

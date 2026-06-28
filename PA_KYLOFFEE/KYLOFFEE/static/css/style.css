@@ -30,7 +30,7 @@ a { color: inherit; }
 
 .opening-page {
     align-items: flex-start;
-    padding: 268px 24px 70px;
+    padding: clamp(150px, 26vh, 268px) 24px 70px;
     color: var(--white);
 }
 
@@ -48,7 +48,7 @@ a { color: inherit; }
 }
 
 .opening-copy p {
-    margin: 11px 0 139px;
+    margin: 11px 0 clamp(88px, 13.6vh, 139px);
     color: var(--white);
     font-size: 26px;
     line-height: 1.12;
@@ -435,7 +435,7 @@ input[type="password"]::-ms-clear { display: none; }
 @media print { .no-print { display:none; } .print-page { padding:0; background:white; } }
 
 @media (max-width: 760px) {
-    .opening-page { padding: 92px 18px 48px; }
+    .opening-page { padding: 82px 18px 48px; }
     .opening-copy h1 { font-size: 42px; }
     .opening-copy p {
         margin: 10px 0 64px;
