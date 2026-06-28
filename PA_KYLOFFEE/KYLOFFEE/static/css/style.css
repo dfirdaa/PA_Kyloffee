@@ -346,6 +346,11 @@ input[type="password"]::-ms-clear { display: none; }
 .auth-button--link { width: auto; padding: 0 46px; margin: 20px auto 12px; font-size: 21px; }
 .auth-switch { text-align: center; color: var(--muted); margin: 22px 0 0; }
 .auth-switch a { font-weight: 800; color: var(--brown); text-decoration: none; }
+.auth-switch--register {
+    margin-top: 24px;
+    color: #5c504b;
+    font-size: 16px;
+}
 .secondary-link { display: inline-block; margin-top: 12px; color: var(--muted); text-decoration: none; }
 
 .message-stack { display: grid; gap: 10px; margin-bottom: 20px; }
