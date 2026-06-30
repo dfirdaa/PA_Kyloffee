@@ -902,6 +902,27 @@ input[type="password"]::-ms-clear { display: none; }
     margin-top: 14px;
 }
 
+.payment-page .payment-mode .pos-checkout-button {
+    min-height: 58px;
+    background: var(--payment-primary);
+    color: white;
+    box-shadow: 0 14px 28px rgba(58, 30, 26, .16);
+}
+
+.payment-page .payment-mode .pos-checkout-button:hover:not(:disabled) {
+    background: var(--payment-hover);
+    transform: translateY(-1px);
+}
+
+.payment-page .payment-mode .pos-checkout-button:disabled {
+    border: 1px solid var(--payment-border);
+    background: #e7ddd6;
+    color: #6b5b55;
+    box-shadow: none;
+    cursor: not-allowed;
+    opacity: 1;
+}
+
 .qris-card {
     display: grid;
     grid-template-columns: 190px 1fr;
@@ -2033,6 +2054,53 @@ input[type="password"]::-ms-clear { display: none; }
     display: grid;
     gap: 14px;
     margin-bottom: 22px;
+}
+
+.payment-page .quick-cash-row button,
+.payment-page .cash-keypad button {
+    background: #ffffff !important;
+    color: #24120c !important;
+}
+
+.payment-page .quick-cash-row button:hover,
+.payment-page .quick-cash-row button:focus,
+.payment-page .cash-keypad button:hover,
+.payment-page .cash-keypad button:focus {
+    background: #3a1e1a !important;
+    color: #ffffff !important;
+}
+
+.payment-complete-button,
+.payment-page button.payment-complete-button {
+    position: relative;
+    min-height: 70px;
+    margin-top: 22px;
+    border: 2px solid #3a1e1a;
+    border-radius: 16px;
+    background: #3a1e1a !important;
+    color: #ffffff !important;
+    font-size: 22px;
+    font-weight: 900;
+    box-shadow: 0 18px 34px rgba(58, 30, 26, .2);
+}
+
+.payment-complete-button span {
+    color: inherit !important;
+}
+
+.payment-complete-button:hover:not(:disabled),
+.payment-page button.payment-complete-button:hover:not(:disabled) {
+    background: #4d2823 !important;
+    border-color: #4d2823 !important;
+}
+
+.payment-complete-button:disabled,
+.payment-page button.payment-complete-button:disabled {
+    background: #efe5dc !important;
+    color: #3a1e1a !important;
+    border-color: #3a1e1a;
+    box-shadow: none;
+    opacity: 1;
 }
 
 .cash-summary {
