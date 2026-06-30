@@ -44,10 +44,9 @@
                             <button
                                 type="button"
                                 class="category-filter"
-                                data-category-filter="{{ category['label'] }}"
-                                data-category-values="{{ category['values']|join('||') }}"
+                                data-category-filter="{{ category }}"
                             >
-                                {{ category['label'] }}
+                                {{ category }}
                             </button>
                         {% endfor %}
                     </div>

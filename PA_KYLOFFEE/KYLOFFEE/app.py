@@ -671,40 +671,20 @@ def get_pos_category_filters(categories):
         if category_name:
             category_lookup[category_key(category_name)] = category_name
 
-    coffee_keys = {
-        category_key("Coffee"),
-        category_key("Black Series"),
-        category_key("White Series"),
-        category_key("Signature Series"),
-    }
-    preferred_filters = [
-        ("Coffee", coffee_keys),
-        ("Non Coffee", {category_key("Non Coffee")}),
-        ("Food", {category_key("Food")}),
-        ("Black Series", {category_key("Black Series")}),
-    ]
-
+    preferred_categories = ["Coffee", "Non Coffee", "Food", "Black Series"]
     filters = []
     used_keys = set()
-    for label, keys in preferred_filters:
-        values = [category_lookup[key] for key in keys if key in category_lookup]
-        if label == "Coffee" and category_key("Coffee") not in category_lookup:
-            values = [
-                category
-                for key, category in category_lookup.items()
-                if key in coffee_keys and key != category_key("Coffee")
-            ]
-        if values or label in {"Coffee", "Non Coffee", "Food", "Black Series"}:
-            filters.append({"label": label, "values": values or [label]})
-            used_keys.update(keys)
+    for preferred_category in preferred_categories:
+        key = category_key(preferred_category)
+        filters.append(category_lookup.get(key, preferred_category))
+        used_keys.add(key)
 
     extra_categories = [
         category
         for key, category in sorted(category_lookup.items(), key=lambda item: item[1].casefold())
         if key not in used_keys
     ]
-    filters.extend({"label": category, "values": [category]} for category in extra_categories)
-    return filters
+    return filters + extra_categories
 
 
 def format_report_datetime(value):

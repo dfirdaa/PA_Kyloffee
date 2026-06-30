@@ -1553,6 +1553,10 @@ input[type="password"]::-ms-clear { display: none; }
     opacity: .82;
 }
 
+.pos-product-card--mock.is-hidden {
+    display: none;
+}
+
 .pos-product-card--mock.is-out .mock-product-media img {
     filter: grayscale(.45);
 }

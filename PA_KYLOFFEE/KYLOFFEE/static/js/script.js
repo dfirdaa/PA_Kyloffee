@@ -158,11 +158,12 @@ document.addEventListener("DOMContentLoaded", function () {
                     card.dataset.category || "",
                     card.dataset.description || "",
                 ].join(" ").toLowerCase().replace(/\s+/g, " ");
-                const matchesCategory = selectedCategory === "all" || selectedCategory.includes(category);
+                const matchesCategory = selectedCategory === "all" || category === selectedCategory;
                 const matchesSearch = !keyword || searchableText.includes(keyword);
                 const isVisible = matchesCategory && matchesSearch;
 
                 card.hidden = !isVisible;
+                card.classList.toggle("is-hidden", !isVisible);
                 if (isVisible) visibleCount += 1;
             });
 
@@ -239,11 +240,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         root.querySelectorAll("[data-category-filter]").forEach(function (button) {
             button.addEventListener("click", function () {
-                const categoryValues = String(button.dataset.categoryValues || button.dataset.categoryFilter || "")
-                    .split("||")
-                    .map(normalizeFilterValue)
-                    .filter(Boolean);
-                selectedCategory = button.dataset.categoryFilter === "all" ? "all" : categoryValues;
+                selectedCategory = normalizeFilterValue(button.dataset.categoryFilter || "all") || "all";
                 root.querySelectorAll("[data-category-filter]").forEach(function (item) {
                     item.classList.toggle("is-active", item === button);
                 });
