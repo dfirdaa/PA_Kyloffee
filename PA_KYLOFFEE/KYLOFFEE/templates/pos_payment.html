@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+{% block title %}Payment - Kyloffee{% endblock %}
+{% block body %}
+<main
+    class="payment-page"
+    data-payment-page
+    data-pos-url="{{ url_for('pos') }}"
+    data-checkout-url="{{ url_for('pos_checkout') }}"
+    data-qris-url="{{ url_for('pos_qris_payload') }}"
+>
+    <section class="payment-page__shell">
+        <aside class="payment-order-summary">
+            <header>
+                <a href="{{ url_for('pos') }}" class="payment-back-link" data-payment-back>&larr; Back to POS</a>
+                <p class="payment-eyebrow">Current Order</p>
+                <h1>Order Summary</h1>
+                <span>Shift : {{ shift }} Staff: {{ staff_name }}</span>
+            </header>
+
+            <div class="payment-cart-list" data-payment-cart-items></div>
+
+            <div class="payment-cart-empty" data-payment-cart-empty>
+                <strong>Keranjang masih kosong.</strong>
+                <p>Kembali ke POS untuk menambahkan menu.</p>
+            </div>
+
+            <footer class="payment-order-totals">
+                <div>
+                    <span>Qty</span>
+                    <strong data-payment-count>0 Items</strong>
+                </div>
+                <div>
+                    <span>Subtotal</span>
+                    <strong data-summary-subtotal>Rp 0</strong>
+                </div>
+                <div>
+                    <span>Diskon</span>
+                    <strong data-summary-discount>Rp 0</strong>
+                </div>
+                <div class="payment-order-total">
+                    <span>Total Amount</span>
+                    <strong data-summary-total>Rp 0</strong>
+                </div>
+            </footer>
+        </aside>
+
+        <section class="payment-page__panel">
+            <header class="payment-page__header">
+                <div>
+                    <span class="payment-eyebrow">Payment</span>
+                    <h2>Complete Order</h2>
+                </div>
+                <a href="{{ url_for('pos') }}" class="payment-close-button" data-payment-back aria-label="Kembali ke POS">x</a>
+            </header>
+
+            <div class="pos-payment-form pos-payment-form--page">
+                <label>
+                    Nama Pelanggan
+                    <input type="text" data-customer-name placeholder="Walk-in Customer">
+                </label>
+                <label>
+                    Diskon
+                    <input type="number" data-discount-amount min="0" value="0">
+                </label>
+            </div>
+
+            <section class="payment-method-section">
+                <h3>Payment Method</h3>
+                <div class="payment-method-grid">
+                    <button type="button" class="payment-method-card is-active" data-payment-method="Cash">
+                        <span class="payment-method-icon">Rp</span>
+                        <strong>Cash</strong>
+                        <small>Bayar tunai dan hitung kembalian otomatis.</small>
+                    </button>
+                    <button type="button" class="payment-method-card" data-payment-method="QRIS">
+                        <span class="payment-method-icon">QR</span>
+                        <strong>QRIS</strong>
+                        <small>Generate QR otomatis untuk simulasi pembayaran.</small>
+                    </button>
+                </div>
+            </section>
+
+            <section class="payment-mode payment-mode--cash is-active" data-payment-mode="Cash">
+                <div class="cash-summary">
+                    <div>
+                        <span>Received Amount</span>
+                        <strong data-cash-received>Rp 0</strong>
+                    </div>
+                    <div>
+                        <span>Change</span>
+                        <strong data-cash-change>Rp 0</strong>
+                    </div>
+                    <div>
+                        <span>Total Amount</span>
+                        <strong data-cash-total>Rp 0</strong>
+                    </div>
+                </div>
+
+                <div class="quick-cash-row">
+                    <button type="button" data-quick-cash="20000">Rp20.000</button>
+                    <button type="button" data-quick-cash="50000">Rp50.000</button>
+                    <button type="button" data-quick-cash="100000">Rp100.000</button>
+                </div>
+
+                <div class="cash-keypad" aria-label="Keypad nominal pembayaran tunai">
+                    {% for key in ['1','2','3','4','5','6','7','8','9','00','0','back'] %}
+                        <button type="button" data-cash-key="{{ key }}">
+                            {% if key == 'back' %}&larr;{% else %}{{ key }}{% endif %}
+                        </button>
+                    {% endfor %}
+                    <button type="button" class="keypad-wide" data-cash-key="clear">Clear</button>
+                </div>
+
+                <button type="button" class="pos-checkout-button" data-complete-cash disabled>Complete Payment</button>
+            </section>
+
+            <section class="payment-mode payment-mode--qris" data-payment-mode="QRIS">
+                <div class="qris-card qris-card--page">
+                    <div class="qris-frame">
+                        <div class="qris-placeholder" data-qris-placeholder>QRIS</div>
+                        <img src="" alt="QR Code pembayaran QRIS" data-qris-image hidden>
+                    </div>
+                    <div class="qris-details">
+                        <span>Total pembayaran</span>
+                        <strong data-qris-total>Rp 0</strong>
+                        <p>Scan QR Code menggunakan aplikasi pembayaran. QR dibuat otomatis dari invoice, total, dan waktu transaksi.</p>
+                        <small data-qris-order>Invoice akan dibuat setelah keranjang siap.</small>
+                    </div>
+                </div>
+
+                <button type="button" class="pos-checkout-button qris-status-button" data-check-qris disabled>
+                    Check Payment Status
+                </button>
+                <div class="qris-status" data-qris-status>Menunggu QR dibuat.</div>
+            </section>
+
+            <p class="pos-message" data-payment-message hidden></p>
+        </section>
+    </section>
+</main>
+{% endblock %}

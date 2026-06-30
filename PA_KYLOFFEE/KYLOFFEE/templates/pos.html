@@ -1,55 +1,143 @@
 {% extends 'base.html' %}
 {% block title %}POS Staff - Kyloffee{% endblock %}
 {% block body %}
-<main class="pos-page">
-    <header class="pos-header">
-        <div>
+<main
+    class="pos-page pos-page--mockup"
+    data-pos-cart
+    data-payment-url="{{ url_for('pos_payment') }}"
+>
+    <aside class="pos-sidebar-mock">
+        <a href="{{ url_for('pos') }}" class="pos-sidebar-brand" aria-label="Kyloffee POS">
+            <span>Kyloffee</span>
+            <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
+        </a>
+
+        <nav class="pos-sidebar-nav" aria-label="POS navigation">
+            <a href="{{ url_for('pos') }}" class="active">
+                <span aria-hidden="true">&#9635;</span>
+                <strong>Order Input</strong>
+            </a>
+        </nav>
+
+        <a href="{{ url_for('logout') }}" class="pos-sidebar-logout">
+            <span aria-hidden="true">&larr;</span>
+            Log Out
+        </a>
+    </aside>
+
+    <section class="pos-workspace-mock">
+        <header class="pos-topbar-mock">
             <h1>Kyloffee POS</h1>
-            <p>Shift: {{ shift }}</p>
-        </div>
-        <a href="{{ url_for('logout') }}" class="small-button">Logout</a>
-    </header>
+            <label class="pos-search-mock">
+                <input type="search" data-menu-search placeholder="Cari menu, kategori, deskripsi" aria-label="Cari menu">
+                <span aria-hidden="true">&#8981;</span>
+            </label>
+            <p>Shift : {{ shift }} Staff: {{ staff_name }}</p>
+        </header>
 
-    <section class="pos-layout">
-        <aside class="pos-categories">
-            <h2>Kategori</h2>
-            {% if menu_categories %}
-                {% for category in menu_categories %}
-                    <span>{{ category }}</span>
-                {% endfor %}
-            {% else %}
-                <p>Belum ada kategori aktif.</p>
-            {% endif %}
-        </aside>
-
-        <section class="pos-products">
-            <div class="section-title">
-                <h2>Menu Aktif</h2>
-                <p>Menu yang sudah dibuat owner dan berstatus aktif.</p>
-            </div>
-
-            <div class="product-grid-pos">
-                {% if products %}
-                    {% for product in products %}
-                        <article class="pos-product-card">
-                            {% if product.image %}
-                                <img src="{{ menu_image_url(product.image) }}" alt="{{ product.name }}">
-                            {% else %}
-                                <div class="pos-product-empty">☕</div>
-                            {% endif %}
-                            <h3>{{ product.name }}</h3>
-                            <p>{{ product.description or product.category }}</p>
-                            <strong>Rp {{ "{:,.0f}".format(product.price|int).replace(",", ".") }}</strong>
-                            <small>Stok: {{ product.stock }}</small>
-                        </article>
-                    {% endfor %}
-                {% else %}
-                    <div class="empty-pos">
-                        <strong>Belum ada menu aktif.</strong>
-                        <p>Tambahkan menu dari halaman Owner terlebih dahulu.</p>
+        <section class="pos-board-mock">
+            <section class="pos-menu-mock">
+                <nav class="pos-category-strip" aria-label="Kategori menu">
+                    <div class="pos-category-scroll">
+                        <button type="button" class="category-filter is-active" data-category-filter="all">All Items</button>
+                        {% for category in menu_categories %}
+                            <button type="button" class="category-filter" data-category-filter="{{ category }}">{{ category }}</button>
+                        {% endfor %}
                     </div>
-                {% endif %}
-            </div>
+                </nav>
+
+                <div class="product-grid-pos product-grid-pos--mock">
+                    {% if products %}
+                        {% for product in products %}
+                            {% set product_stock = product.stock|int %}
+                            <article
+                                class="pos-product-card pos-product-card--mock {% if product_stock <= 0 %}is-out{% endif %}"
+                                data-product-card
+                                data-menu-id="{{ product.id }}"
+                                data-name="{{ product.name }}"
+                                data-price="{{ product.price|int }}"
+                                data-stock="{{ product_stock }}"
+                                data-category="{{ product.category }}"
+                                data-description="{{ product.description or '' }}"
+                            >
+                                <div class="mock-product-media">
+                                    {% if product.image %}
+                                        <img src="{{ menu_image_url(product.image) }}" alt="{{ product.name }}">
+                                    {% else %}
+                                        <div class="mock-product-empty">K</div>
+                                    {% endif %}
+                                    {% if product_stock <= 0 %}
+                                        <span class="stock-empty-label">Stok Habis</span>
+                                    {% endif %}
+                                </div>
+                                <div class="mock-product-body">
+                                    <div class="mock-product-info">
+                                        <span class="mock-product-category">{{ product.category }}</span>
+                                        <h3>{{ product.name }}</h3>
+                                        <p>{{ product.description or product.category }}</p>
+                                    </div>
+                                    <div class="mock-product-bottom">
+                                        <div>
+                                            <strong>Rp {{ "{:,.0f}".format(product.price|int).replace(",", ".") }}</strong>
+                                            <small data-stock-label>Stok: {{ product_stock }}</small>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="pos-add-button"
+                                            data-add-product
+                                            {% if product_stock <= 0 %}disabled{% endif %}
+                                            aria-label="Tambah {{ product.name }}"
+                                        >
+                                            {% if product_stock > 0 %}+ Tambah{% else %}Stok Habis{% endif %}
+                                        </button>
+                                    </div>
+                                </div>
+                            </article>
+                        {% endfor %}
+                        <div class="empty-pos empty-pos--filter" data-menu-empty hidden>
+                            <strong>Menu tidak ditemukan.</strong>
+                            <p>Coba kata kunci lain atau pilih kategori All Items.</p>
+                        </div>
+                    {% else %}
+                        <div class="empty-pos">
+                            <strong>Belum ada menu aktif.</strong>
+                            <p>Tambahkan menu dari halaman Owner terlebih dahulu.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <aside class="current-order-panel">
+                <header class="current-order-header">
+                    <h2>Current Order</h2>
+                    <span>Table 1</span>
+                </header>
+
+                <section class="current-order-list">
+                    <div class="pos-cart-empty" data-cart-empty>
+                        <strong>Keranjang masih kosong.</strong>
+                        <p>Tekan tombol plus pada menu yang dipesan pelanggan.</p>
+                    </div>
+                    <div class="pos-cart-items" data-cart-items></div>
+                </section>
+
+                <footer class="current-order-footer">
+                    <div class="order-summary-line">
+                        <span>Qty</span>
+                        <strong data-cart-count>0 Items</strong>
+                    </div>
+                    <div class="order-summary-line">
+                        <span>Subtotal</span>
+                        <strong data-summary-subtotal>Rp 0</strong>
+                    </div>
+                    <div class="order-summary-line order-summary-total">
+                        <span>Total</span>
+                        <strong data-summary-total>Rp 0</strong>
+                    </div>
+                    <button type="button" class="pos-payment-open" data-open-payment disabled>Payment</button>
+                    <p class="pos-message" data-pos-message hidden></p>
+                </footer>
+            </aside>
         </section>
     </section>
 </main>

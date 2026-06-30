@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% block title %}Receipt - Kyloffee{% endblock %}
+{% block body %}
+<main class="receipt-page receipt-page--thermal">
+    <section class="receipt-shell receipt-shell--thermal">
+        <article class="thermal-receipt" id="receipt-print-area">
+            <header class="thermal-receipt__header">
+                <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="Kyloffee" class="thermal-receipt__logo">
+                <h1>Kyloffee</h1>
+                <p>Jl. Kyloffee Raya No. 1, Indonesia</p>
+            </header>
+
+            <div class="thermal-divider"></div>
+
+            <section class="thermal-meta">
+                <div>
+                    <span>Tanggal</span>
+                    <strong>{{ transaction.date_display }}</strong>
+                </div>
+                <div>
+                    <span>Jam</span>
+                    <strong>{{ transaction.time_display }}</strong>
+                </div>
+                <div>
+                    <span>Kasir</span>
+                    <strong>{{ transaction.staff_name or 'Staff' }}</strong>
+                </div>
+                <div>
+                    <span>Invoice</span>
+                    <strong>{{ transaction.order_code }}</strong>
+                </div>
+            </section>
+
+            <div class="thermal-divider"></div>
+
+            <table class="thermal-table">
+                <thead>
+                    <tr>
+                        <th>Menu</th>
+                        <th>Qty</th>
+                        <th>Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in transaction['items'] %}
+                        <tr>
+                            <td>
+                                <strong>{{ item.menu_name }}</strong>
+                                <span>{{ item.unit_price_display }}</span>
+                            </td>
+                            <td>{{ item.quantity }}</td>
+                            <td>{{ item.subtotal_display }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="thermal-divider"></div>
+
+            <section class="thermal-total-list">
+                <div class="thermal-grand-total">
+                    <span>Total</span>
+                    <strong>{{ transaction.total_display }}</strong>
+                </div>
+                <div>
+                    <span>Metode</span>
+                    <strong>{{ payment.method }}</strong>
+                </div>
+                <div>
+                    <span>Nominal Diterima</span>
+                    <strong>{{ received_display }}</strong>
+                </div>
+                <div>
+                    <span>Kembalian</span>
+                    <strong>{{ change_display }}</strong>
+                </div>
+            </section>
+
+            <div class="thermal-divider"></div>
+
+            <footer class="thermal-receipt__footer">
+                <strong>Terima kasih</strong>
+                <p>Silakan datang kembali ke Kyloffee.</p>
+            </footer>
+        </article>
+
+        <div class="receipt-actions no-print">
+            <a href="{{ url_for('payment_success', order_code=transaction.order_code) }}" class="secondary-payment-button">Back</a>
+            <button type="button" onclick="window.print()" class="pos-checkout-button">Print Receipt</button>
+            <a href="{{ url_for('pos') }}" class="secondary-payment-button">New Transaction</a>
+        </div>
+    </section>
+</main>
+{% endblock %}

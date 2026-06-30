@@ -2,6 +2,7 @@ import os
 import ssl
 import sqlite3
 import uuid
+from io import BytesIO
 from functools import wraps
 from pathlib import Path
 from datetime import date, datetime, timedelta
@@ -15,6 +16,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     session,
     url_for,
 )
@@ -26,6 +28,11 @@ try:
     import cloudinary.uploader
 except ImportError:  # pragma: no cover - only used when dependency is missing.
     cloudinary = None
+
+try:
+    import qrcode
+except ImportError:  # pragma: no cover - app still runs before dependency install.
+    qrcode = None
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE = BASE_DIR / "database.db"
@@ -571,6 +578,21 @@ def staff_required(view_func):
             return redirect(url_for("login"))
         if session.get("role") != "staff":
             return redirect_for_role()
+
+        user = get_db().execute(
+            "SELECT role, is_active FROM users WHERE id = ?",
+            (session.get("user_id"),),
+        ).fetchone()
+        user_data = row_to_dict(user)
+        if not user_data or str(user_data.get("role") or "").strip().lower() != "staff":
+            session.clear()
+            flash("Sesi tidak valid. Silakan login ulang.", "error")
+            return redirect(url_for("login"))
+        if int(user_data.get("is_active", 1) or 0) != 1:
+            session.clear()
+            flash("Akun staff ini sedang nonaktif. Silakan hubungi owner.", "error")
+            return redirect(url_for("login"))
+
         return view_func(**kwargs)
 
     return wrapped_view
@@ -714,7 +736,6 @@ def get_period_totals(start_date, end_date):
             """
             SELECT
                 COALESCE(SUM(total_amount), 0) AS revenue,
-                COALESCE(SUM(operational_cost), 0) AS cost,
                 COUNT(*) AS transactions
             FROM pos_transactions
             WHERE transaction_date BETWEEN ? AND ?
@@ -724,12 +745,10 @@ def get_period_totals(start_date, end_date):
         ).fetchone()
     )
     revenue = int(row.get("revenue") or 0)
-    cost = int(row.get("cost") or 0)
     transactions = int(row.get("transactions") or 0)
     return {
         "revenue": revenue,
-        "cost": cost,
-        "profit": revenue - cost,
+        "profit": revenue,
         "transactions": transactions,
     }
 
@@ -760,8 +779,7 @@ def fetch_daily_details(start_date, end_date):
             SELECT
                 transaction_date,
                 COUNT(*) AS transactions,
-                COALESCE(SUM(total_amount), 0) AS income,
-                COALESCE(SUM(operational_cost), 0) AS cost
+                COALESCE(SUM(total_amount), 0) AS income
             FROM pos_transactions
             WHERE transaction_date BETWEEN ? AND ?
               AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
@@ -775,15 +793,13 @@ def fetch_daily_details(start_date, end_date):
     details = []
     for row in rows:
         income = int(row.get("income") or 0)
-        cost = int(row.get("cost") or 0)
         detail_date = parse_report_date(str(row.get("transaction_date")))
         details.append(
             {
                 "date": format_short_date(detail_date) if detail_date else row.get("transaction_date"),
                 "transactions": int(row.get("transactions") or 0),
                 "income": format_currency(income),
-                "cost": format_currency(cost),
-                "profit": format_currency(income - cost),
+                "profit": format_currency(income),
             }
         )
     return details
@@ -795,18 +811,20 @@ def fetch_recent_transactions(start_date, end_date, limit=5):
         db.execute(
             """
             SELECT
-                order_code,
-                transaction_date,
-                transaction_time,
-                customer_name,
-                payment_method,
-                total_amount,
-                item_count,
-                status
-            FROM pos_transactions
-            WHERE transaction_date BETWEEN ? AND ?
-              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
-            ORDER BY transaction_date DESC, transaction_time DESC, id DESC
+                t.order_code,
+                t.transaction_date,
+                t.transaction_time,
+                t.customer_name,
+                t.payment_method,
+                t.total_amount,
+                t.item_count,
+                t.status,
+                u.full_name AS staff_name
+            FROM pos_transactions t
+            LEFT JOIN users u ON u.id = t.staff_id
+            WHERE t.transaction_date BETWEEN ? AND ?
+              AND LOWER(t.status) IN ('selesai', 'paid', 'completed', 'complete')
+            ORDER BY t.transaction_date DESC, t.transaction_time DESC, t.id DESC
             LIMIT ?
             """,
             (start_date.isoformat(), end_date.isoformat(), limit),
@@ -824,6 +842,7 @@ def fetch_recent_transactions(start_date, end_date, limit=5):
                 "time": transaction_time or "-",
                 "customer": row.get("customer_name") or "Walk-in Customer",
                 "method": row.get("payment_method") or "Tunai",
+                "staff": row.get("staff_name") or "-",
                 "total": format_currency(row.get("total_amount") or 0),
                 "items": int(row.get("item_count") or 0),
                 "status": str(row.get("status") or "Selesai").title(),
@@ -924,12 +943,6 @@ def build_financial_report(args=None):
                 "tone": trend_tone(totals["revenue"], previous_totals["revenue"]),
             },
             {
-                "label": "Total Biaya Operasional",
-                "value": format_currency(totals["cost"]),
-                "trend": build_trend_text(totals["cost"], previous_totals["cost"], "Belum ada biaya"),
-                "tone": trend_tone(previous_totals["cost"], totals["cost"]),
-            },
-            {
                 "label": "Laba Bersih",
                 "value": format_currency(totals["profit"]),
                 "trend": build_trend_text(totals["profit"], previous_totals["profit"], "Belum ada transaksi"),
@@ -956,7 +969,7 @@ def build_financial_report(args=None):
         ],
         "print_summary": [
             {"label": "Total Pendapatan (Revenue)", "value": format_currency(totals["revenue"]), "tone": "normal"},
-            {"label": "Total Biaya Operasional", "value": format_currency(totals["cost"]), "tone": "danger"},
+            {"label": "Laba Bersih", "value": format_currency(totals["profit"]), "tone": "success"},
             {"label": "Total Transaksi", "value": str(totals["transactions"]), "tone": "normal"},
             {"label": "Rata-rata Pendapatan Harian", "value": format_currency(average_income), "tone": "normal"},
         ],
@@ -967,7 +980,6 @@ def build_financial_report(args=None):
         "daily_totals": {
             "transactions": str(totals["transactions"]),
             "income": format_currency(totals["revenue"]),
-            "cost": format_currency(totals["cost"]),
             "profit": format_currency(totals["profit"]),
         },
         "recent_transactions": recent_transactions,
@@ -1095,6 +1107,302 @@ def get_current_shift():
     if 12 <= current_hour < 18:
         return "Siang"
     return "Malam"
+
+
+def parse_pos_amount(value, field_label):
+    if value in (None, ""):
+        return 0
+    try:
+        amount = int(str(value).strip().replace(".", "").replace(",", ""))
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_label} harus berupa angka.")
+    if amount < 0:
+        raise ValueError(f"{field_label} tidak boleh negatif.")
+    return amount
+
+
+def normalize_pos_items(raw_items):
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("Keranjang masih kosong.")
+
+    items = {}
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            raise ValueError("Data item POS tidak valid.")
+        try:
+            menu_id = int(raw_item.get("menu_id"))
+            quantity = int(raw_item.get("quantity", 1))
+        except (TypeError, ValueError):
+            raise ValueError("Data item POS tidak valid.")
+        if menu_id < 1 or quantity < 1:
+            raise ValueError("Jumlah item POS tidak valid.")
+        if quantity > 999:
+            raise ValueError("Jumlah item terlalu besar.")
+        items[menu_id] = items.get(menu_id, 0) + quantity
+
+    return items
+
+
+def generate_order_code(now=None):
+    now = now or datetime.now()
+    return f"POS-{now:%Y%m%d%H%M%S}-{uuid.uuid4().hex[:4].upper()}"
+
+
+def generate_invoice_code(now=None):
+    now = now or datetime.now()
+    return f"INV{now:%Y%m%d%H%M%S}{uuid.uuid4().hex[:3].upper()}"
+
+
+def normalize_order_code(value):
+    value = str(value or "").strip().upper()
+    allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+    cleaned = "".join(char for char in value if char in allowed)
+    return cleaned[:60]
+
+
+def build_qris_payload(order_code, total_amount, timestamp):
+    return f"ORDER={order_code}\nTOTAL={int(total_amount or 0)}\nTIME={timestamp}"
+
+
+def remember_payment_details(order_code, payment_method, total_amount, received_amount=None, change_amount=None):
+    received = int(received_amount if received_amount is not None else total_amount or 0)
+    change = int(change_amount if change_amount is not None else max(received - int(total_amount or 0), 0))
+    session["last_payment"] = {
+        "order_code": order_code,
+        "payment_method": payment_method,
+        "total_amount": int(total_amount or 0),
+        "received_amount": received,
+        "change_amount": change,
+    }
+    session.modified = True
+
+
+def get_payment_details(order_code, transaction):
+    stored = session.get("last_payment") or {}
+    if stored.get("order_code") == order_code:
+        return {
+            "method": stored.get("payment_method") or transaction.get("payment_method") or "-",
+            "received_amount": int(stored.get("received_amount") or 0),
+            "change_amount": int(stored.get("change_amount") or 0),
+        }
+
+    total_amount = int(transaction.get("total_amount") or 0)
+    return {
+        "method": transaction.get("payment_method") or "-",
+        "received_amount": total_amount,
+        "change_amount": 0,
+    }
+
+
+def fetch_transaction_detail(order_code):
+    init_pos_tables()
+    db = get_db()
+    transaction = row_to_dict(
+        db.execute(
+            """
+            SELECT
+                t.id,
+                t.order_code,
+                t.transaction_date,
+                t.transaction_time,
+                t.customer_name,
+                t.payment_method,
+                t.subtotal_amount,
+                t.total_amount,
+                t.item_count,
+                t.status,
+                u.full_name AS staff_name
+            FROM pos_transactions t
+            LEFT JOIN users u ON u.id = t.staff_id
+            WHERE t.order_code = ?
+            """,
+            (order_code,),
+        ).fetchone()
+    )
+    if not transaction:
+        return None
+
+    items = fetch_all_dict(
+        db.execute(
+            """
+            SELECT menu_name, quantity, unit_price, subtotal
+            FROM pos_transaction_items
+            WHERE transaction_id = ?
+            ORDER BY id ASC
+            """,
+            (transaction["id"],),
+        )
+    )
+
+    transaction_date = parse_report_date(str(transaction.get("transaction_date") or ""))
+    transaction["date_display"] = format_short_date(transaction_date) if transaction_date else transaction.get("transaction_date")
+    transaction["time_display"] = str(transaction.get("transaction_time") or "")[:5]
+    transaction["total_display"] = format_currency(transaction.get("total_amount") or 0)
+    transaction["subtotal_display"] = format_currency(transaction.get("subtotal_amount") or 0)
+    transaction["items"] = [
+        {
+            **item,
+            "unit_price_display": format_currency(item.get("unit_price") or 0),
+            "subtotal_display": format_currency(item.get("subtotal") or 0),
+        }
+        for item in items
+    ]
+    return transaction
+
+
+def create_pos_transaction(data):
+    init_menu_table()
+    init_pos_tables()
+
+    items = normalize_pos_items(data.get("items"))
+    customer_name = str(data.get("customer_name") or "").strip() or "Walk-in Customer"
+    payment_method = str(data.get("payment_method") or "Tunai").strip() or "Tunai"
+    if payment_method.lower() in {"tunai", "cash"}:
+        payment_method = "Cash"
+    elif payment_method.lower() == "qris":
+        payment_method = "QRIS"
+    else:
+        raise ValueError("Metode pembayaran hanya boleh Cash atau QRIS.")
+    discount_amount = parse_pos_amount(data.get("discount_amount"), "Diskon")
+    tax_amount = 0
+    operational_cost = 0
+
+    db = get_db()
+    placeholders = ", ".join(["?"] * len(items))
+    menu_rows = fetch_all_dict(
+        db.execute(
+            f"""
+            SELECT id, name, price, stock, is_active
+            FROM menus
+            WHERE id IN ({placeholders})
+            """,
+            tuple(items.keys()),
+        )
+    )
+    menu_map = {int(row["id"]): row for row in menu_rows}
+
+    prepared_items = []
+    validation_errors = []
+    subtotal_amount = 0
+    item_count = 0
+
+    for menu_id, quantity in items.items():
+        menu = menu_map.get(menu_id)
+        if menu is None:
+            validation_errors.append(f"Menu ID {menu_id} tidak ditemukan.")
+            continue
+
+        menu_name = menu.get("name") or "Menu"
+        is_active = int(menu.get("is_active", 0) or 0) == 1
+        stock = int(menu.get("stock") or 0)
+        unit_price = int(menu.get("price") or 0)
+
+        if not is_active:
+            validation_errors.append(f"{menu_name} sedang nonaktif.")
+            continue
+        if quantity > stock:
+            validation_errors.append(f"Stok {menu_name} tidak cukup. Tersedia {stock}.")
+            continue
+
+        line_subtotal = unit_price * quantity
+        subtotal_amount += line_subtotal
+        item_count += quantity
+        prepared_items.append(
+            {
+                "menu_id": menu_id,
+                "menu_name": menu_name,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "subtotal": line_subtotal,
+                "stock": stock,
+            }
+        )
+
+    if validation_errors:
+        raise ValueError(" ".join(validation_errors))
+    if discount_amount > subtotal_amount:
+        raise ValueError("Diskon tidak boleh lebih besar dari subtotal.")
+
+    total_amount = subtotal_amount - discount_amount
+    if payment_method == "Cash":
+        received_amount = parse_pos_amount(data.get("received_amount"), "Nominal diterima")
+        if received_amount < total_amount:
+            raise ValueError("Nominal diterima kurang dari total pembayaran.")
+
+    now = datetime.now()
+    order_code = normalize_order_code(data.get("order_code")) or generate_order_code(now)
+
+    try:
+        cursor = db.execute(
+            """
+            INSERT INTO pos_transactions (
+                order_code, transaction_date, transaction_time, customer_name,
+                payment_method, subtotal_amount, discount_amount, tax_amount,
+                operational_cost, total_amount, item_count, status, staff_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                order_code,
+                now.date().isoformat(),
+                now.strftime("%H:%M:%S"),
+                customer_name,
+                payment_method,
+                subtotal_amount,
+                discount_amount,
+                tax_amount,
+                operational_cost,
+                total_amount,
+                item_count,
+                "Selesai",
+                session.get("user_id"),
+            ),
+        )
+        transaction_id = cursor.lastrowid
+
+        for item in prepared_items:
+            stock_update = db.execute(
+                """
+                UPDATE menus
+                SET stock = stock - ?
+                WHERE id = ? AND stock >= ?
+                """,
+                (item["quantity"], item["menu_id"], item["quantity"]),
+            )
+            if getattr(stock_update, "rowcount", 0) != 1:
+                raise ValueError(f"Stok {item['menu_name']} baru saja berubah. Silakan cek ulang keranjang.")
+
+            db.execute(
+                """
+                INSERT INTO pos_transaction_items (
+                    transaction_id, menu_id, menu_name, quantity, unit_price, subtotal
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    transaction_id,
+                    item["menu_id"],
+                    item["menu_name"],
+                    item["quantity"],
+                    item["unit_price"],
+                    item["subtotal"],
+                ),
+            )
+            item["stock_remaining"] = item["stock"] - item["quantity"]
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "order_code": order_code,
+        "subtotal_amount": subtotal_amount,
+        "discount_amount": discount_amount,
+        "total_amount": total_amount,
+        "item_count": item_count,
+        "items": prepared_items,
+    }
 
 
 def save_menu_image(uploaded_file):
@@ -1851,20 +2159,172 @@ def pos():
         ORDER BY id DESC
         """
     ).fetchall()
-    category_rows = db.execute(
-        """
-        SELECT DISTINCT category
-        FROM menus
-        WHERE is_active = 1
-        ORDER BY category ASC
-        """
-    ).fetchall()
+    products = [dict(product) for product in products]
+    seen_categories = set()
+    menu_categories = []
+    for product in products:
+        category = str(product.get("category") or "").strip()
+        product["category"] = category
+        category_key = category.casefold()
+        if category and category_key not in seen_categories:
+            seen_categories.add(category_key)
+            menu_categories.append(category)
 
     return render_template(
         "pos.html",
         shift=get_current_shift(),
-        menu_categories=get_ordered_menu_categories(row["category"] for row in category_rows),
-        products=[dict(product) for product in products],
+        staff_name=session.get("full_name", "Staff"),
+        menu_categories=menu_categories,
+        products=products,
+    )
+
+
+@app.route("/pos/payment")
+@staff_required
+def pos_payment():
+    init_pos_tables()
+    return render_template(
+        "pos_payment.html",
+        shift=get_current_shift(),
+        staff_name=session.get("full_name", "Staff"),
+    )
+
+
+@app.route("/api/pos/checkout", methods=["POST"])
+@staff_required
+def pos_checkout():
+    data = request.get_json(silent=True) or {}
+    try:
+        transaction = create_pos_transaction(data)
+        payment_method = "QRIS" if str(data.get("payment_method") or "").strip().lower() == "qris" else "Cash"
+        received_amount = (
+            transaction["total_amount"]
+            if payment_method == "QRIS"
+            else parse_pos_amount(data.get("received_amount"), "Nominal diterima")
+        )
+        change_amount = max(received_amount - transaction["total_amount"], 0)
+        remember_payment_details(
+            transaction["order_code"],
+            payment_method,
+            transaction["total_amount"],
+            received_amount,
+            change_amount,
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+    except Exception:
+        app.logger.exception("POS checkout failed.")
+        return jsonify({"success": False, "message": "Gagal menyimpan transaksi POS. Silakan coba lagi."}), 500
+
+    return jsonify(
+        {
+            "success": True,
+            "message": f"Transaksi {transaction['order_code']} berhasil disimpan.",
+            "transaction": {
+                **transaction,
+                "subtotal_display": format_currency(transaction["subtotal_amount"]),
+                "discount_display": format_currency(transaction["discount_amount"]),
+                "total_display": format_currency(transaction["total_amount"]),
+                "received_amount": received_amount,
+                "received_display": format_currency(received_amount),
+                "change_amount": change_amount,
+                "change_display": format_currency(change_amount),
+                "success_url": url_for("payment_success", order_code=transaction["order_code"]),
+                "receipt_url": url_for("pos_receipt", order_code=transaction["order_code"]),
+            },
+        }
+    )
+
+
+@app.route("/api/pos/qris", methods=["POST"])
+@staff_required
+def pos_qris_payload():
+    data = request.get_json(silent=True) or {}
+    try:
+        total_amount = parse_pos_amount(data.get("total_amount"), "Total pembayaran")
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+
+    if total_amount <= 0:
+        return jsonify({"success": False, "message": "Total pembayaran harus lebih dari Rp 0."}), 400
+
+    timestamp = datetime.now().replace(microsecond=0).isoformat(timespec="minutes")
+    order_code = normalize_order_code(data.get("order_code")) or generate_invoice_code()
+    payload = build_qris_payload(order_code, total_amount, timestamp)
+
+    return jsonify(
+        {
+            "success": True,
+            "order_code": order_code,
+            "timestamp": timestamp,
+            "payload": payload,
+            "qr_url": url_for(
+                "pos_qris_code",
+                order_code=order_code,
+                total=total_amount,
+                timestamp=timestamp,
+            ),
+        }
+    )
+
+
+@app.route("/pos/qris-code/<order_code>.png")
+@staff_required
+def pos_qris_code(order_code):
+    if qrcode is None:
+        return "Paket qrcode belum terpasang. Jalankan pip install -r requirements.txt.", 503
+
+    total_amount = parse_pos_amount(request.args.get("total"), "Total pembayaran")
+    timestamp = request.args.get("timestamp", datetime.now().replace(microsecond=0).isoformat(timespec="minutes"))
+    order_code = normalize_order_code(order_code) or generate_invoice_code()
+    payload = build_qris_payload(order_code, total_amount, timestamp)
+
+    qr = qrcode.QRCode(version=None, box_size=12, border=2)
+    qr.add_data(payload)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="#3A1E1A", back_color="white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return send_file(buffer, mimetype="image/png", download_name=f"{order_code}.png")
+
+
+@app.route("/pos/payment/success/<order_code>")
+@staff_required
+def payment_success(order_code):
+    order_code = normalize_order_code(order_code)
+    transaction = fetch_transaction_detail(order_code)
+    if transaction is None:
+        flash("Transaksi tidak ditemukan.", "error")
+        return redirect(url_for("pos"))
+
+    payment = get_payment_details(order_code, transaction)
+    return render_template(
+        "payment_success.html",
+        transaction=transaction,
+        payment=payment,
+        total_display=format_currency(transaction.get("total_amount") or 0),
+        received_display=format_currency(payment["received_amount"]),
+        change_display=format_currency(payment["change_amount"]),
+    )
+
+
+@app.route("/pos/receipt/<order_code>")
+@staff_required
+def pos_receipt(order_code):
+    order_code = normalize_order_code(order_code)
+    transaction = fetch_transaction_detail(order_code)
+    if transaction is None:
+        flash("Transaksi tidak ditemukan.", "error")
+        return redirect(url_for("pos"))
+
+    payment = get_payment_details(order_code, transaction)
+    return render_template(
+        "receipt.html",
+        transaction=transaction,
+        payment=payment,
+        received_display=format_currency(payment["received_amount"]),
+        change_display=format_currency(payment["change_amount"]),
     )
 
 

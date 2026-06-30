@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Payment Success - Kyloffee{% endblock %}
+{% block body %}
+<main class="payment-result-page">
+    <section class="payment-success-card">
+        <div class="success-icon" aria-hidden="true">✓</div>
+        <p class="payment-eyebrow">Payment Success</p>
+        <h1>Pembayaran Berhasil</h1>
+        <p class="success-copy">Transaksi sudah tercatat dan stok menu otomatis diperbarui.</p>
+
+        <div class="success-detail-grid">
+            <div>
+                <span>Invoice Number</span>
+                <strong>{{ transaction.order_code }}</strong>
+            </div>
+            <div>
+                <span>Metode Bayar</span>
+                <strong>{{ payment.method }}</strong>
+            </div>
+            <div>
+                <span>Total Bayar</span>
+                <strong>{{ total_display }}</strong>
+            </div>
+            <div>
+                <span>Nominal Diterima</span>
+                <strong>{{ received_display }}</strong>
+            </div>
+            <div>
+                <span>Kembalian</span>
+                <strong>{{ change_display }}</strong>
+            </div>
+            <div>
+                <span>Kasir</span>
+                <strong>{{ transaction.staff_name or 'Staff' }}</strong>
+            </div>
+        </div>
+
+        <div class="payment-success-actions">
+            <a href="{{ url_for('pos_receipt', order_code=transaction.order_code) }}" class="pos-checkout-button">Print Receipt</a>
+            <a href="{{ url_for('pos') }}" class="secondary-payment-button">New Transaction</a>
+        </div>
+    </section>
+</main>
+{% endblock %}
