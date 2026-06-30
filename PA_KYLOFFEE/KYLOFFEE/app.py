@@ -736,7 +736,6 @@ def get_period_totals(start_date, end_date):
             """
             SELECT
                 COALESCE(SUM(total_amount), 0) AS revenue,
-                COALESCE(SUM(operational_cost), 0) AS cost,
                 COUNT(*) AS transactions
             FROM pos_transactions
             WHERE transaction_date BETWEEN ? AND ?
@@ -746,12 +745,10 @@ def get_period_totals(start_date, end_date):
         ).fetchone()
     )
     revenue = int(row.get("revenue") or 0)
-    cost = int(row.get("cost") or 0)
     transactions = int(row.get("transactions") or 0)
     return {
         "revenue": revenue,
-        "cost": cost,
-        "profit": revenue - cost,
+        "profit": revenue,
         "transactions": transactions,
     }
 
@@ -782,8 +779,7 @@ def fetch_daily_details(start_date, end_date):
             SELECT
                 transaction_date,
                 COUNT(*) AS transactions,
-                COALESCE(SUM(total_amount), 0) AS income,
-                COALESCE(SUM(operational_cost), 0) AS cost
+                COALESCE(SUM(total_amount), 0) AS income
             FROM pos_transactions
             WHERE transaction_date BETWEEN ? AND ?
               AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
@@ -797,15 +793,13 @@ def fetch_daily_details(start_date, end_date):
     details = []
     for row in rows:
         income = int(row.get("income") or 0)
-        cost = int(row.get("cost") or 0)
         detail_date = parse_report_date(str(row.get("transaction_date")))
         details.append(
             {
                 "date": format_short_date(detail_date) if detail_date else row.get("transaction_date"),
                 "transactions": int(row.get("transactions") or 0),
                 "income": format_currency(income),
-                "cost": format_currency(cost),
-                "profit": format_currency(income - cost),
+                "profit": format_currency(income),
             }
         )
     return details
@@ -949,12 +943,6 @@ def build_financial_report(args=None):
                 "tone": trend_tone(totals["revenue"], previous_totals["revenue"]),
             },
             {
-                "label": "Total Biaya Operasional",
-                "value": format_currency(totals["cost"]),
-                "trend": build_trend_text(totals["cost"], previous_totals["cost"], "Belum ada biaya"),
-                "tone": trend_tone(previous_totals["cost"], totals["cost"]),
-            },
-            {
                 "label": "Laba Bersih",
                 "value": format_currency(totals["profit"]),
                 "trend": build_trend_text(totals["profit"], previous_totals["profit"], "Belum ada transaksi"),
@@ -981,7 +969,7 @@ def build_financial_report(args=None):
         ],
         "print_summary": [
             {"label": "Total Pendapatan (Revenue)", "value": format_currency(totals["revenue"]), "tone": "normal"},
-            {"label": "Total Biaya Operasional", "value": format_currency(totals["cost"]), "tone": "danger"},
+            {"label": "Laba Bersih", "value": format_currency(totals["profit"]), "tone": "success"},
             {"label": "Total Transaksi", "value": str(totals["transactions"]), "tone": "normal"},
             {"label": "Rata-rata Pendapatan Harian", "value": format_currency(average_income), "tone": "normal"},
         ],
@@ -992,7 +980,6 @@ def build_financial_report(args=None):
         "daily_totals": {
             "transactions": str(totals["transactions"]),
             "income": format_currency(totals["revenue"]),
-            "cost": format_currency(totals["cost"]),
             "profit": format_currency(totals["profit"]),
         },
         "recent_transactions": recent_transactions,
@@ -1221,9 +1208,6 @@ def fetch_transaction_detail(order_code):
                 t.customer_name,
                 t.payment_method,
                 t.subtotal_amount,
-                t.discount_amount,
-                t.tax_amount,
-                t.operational_cost,
                 t.total_amount,
                 t.item_count,
                 t.status,
@@ -1255,8 +1239,6 @@ def fetch_transaction_detail(order_code):
     transaction["time_display"] = str(transaction.get("transaction_time") or "")[:5]
     transaction["total_display"] = format_currency(transaction.get("total_amount") or 0)
     transaction["subtotal_display"] = format_currency(transaction.get("subtotal_amount") or 0)
-    transaction["discount_display"] = format_currency(transaction.get("discount_amount") or 0)
-    transaction["tax_display"] = format_currency(transaction.get("tax_amount") or 0)
     transaction["items"] = [
         {
             **item,
@@ -1282,8 +1264,8 @@ def create_pos_transaction(data):
     else:
         raise ValueError("Metode pembayaran hanya boleh Cash atau QRIS.")
     discount_amount = parse_pos_amount(data.get("discount_amount"), "Diskon")
-    tax_amount = parse_pos_amount(data.get("tax_amount"), "Pajak")
-    operational_cost = parse_pos_amount(data.get("operational_cost"), "Biaya operasional")
+    tax_amount = 0
+    operational_cost = 0
 
     db = get_db()
     placeholders = ", ".join(["?"] * len(items))
@@ -1338,10 +1320,10 @@ def create_pos_transaction(data):
 
     if validation_errors:
         raise ValueError(" ".join(validation_errors))
-    if discount_amount > subtotal_amount + tax_amount:
-        raise ValueError("Diskon tidak boleh lebih besar dari subtotal dan pajak.")
+    if discount_amount > subtotal_amount:
+        raise ValueError("Diskon tidak boleh lebih besar dari subtotal.")
 
-    total_amount = subtotal_amount - discount_amount + tax_amount
+    total_amount = subtotal_amount - discount_amount
     if payment_method == "Cash":
         received_amount = parse_pos_amount(data.get("received_amount"), "Nominal diterima")
         if received_amount < total_amount:
@@ -1417,8 +1399,6 @@ def create_pos_transaction(data):
         "order_code": order_code,
         "subtotal_amount": subtotal_amount,
         "discount_amount": discount_amount,
-        "tax_amount": tax_amount,
-        "operational_cost": operational_cost,
         "total_amount": total_amount,
         "item_count": item_count,
         "items": prepared_items,
@@ -2179,12 +2159,34 @@ def pos():
         ORDER BY id DESC
         """
     ).fetchall()
+    products = [dict(product) for product in products]
+    seen_categories = set()
+    menu_categories = []
+    for product in products:
+        category = str(product.get("category") or "").strip()
+        product["category"] = category
+        category_key = category.casefold()
+        if category and category_key not in seen_categories:
+            seen_categories.add(category_key)
+            menu_categories.append(category)
+
     return render_template(
         "pos.html",
         shift=get_current_shift(),
         staff_name=session.get("full_name", "Staff"),
-        menu_categories=MENU_CATEGORIES,
-        products=[dict(product) for product in products],
+        menu_categories=menu_categories,
+        products=products,
+    )
+
+
+@app.route("/pos/payment")
+@staff_required
+def pos_payment():
+    init_pos_tables()
+    return render_template(
+        "pos_payment.html",
+        shift=get_current_shift(),
+        staff_name=session.get("full_name", "Staff"),
     )
 
 
@@ -2222,8 +2224,6 @@ def pos_checkout():
                 **transaction,
                 "subtotal_display": format_currency(transaction["subtotal_amount"]),
                 "discount_display": format_currency(transaction["discount_amount"]),
-                "tax_display": format_currency(transaction["tax_amount"]),
-                "operational_cost_display": format_currency(transaction["operational_cost"]),
                 "total_display": format_currency(transaction["total_amount"]),
                 "received_amount": received_amount,
                 "received_display": format_currency(received_amount),

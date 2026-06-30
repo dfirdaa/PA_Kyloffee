@@ -4,8 +4,7 @@
 <main
     class="pos-page pos-page--mockup"
     data-pos-cart
-    data-checkout-url="{{ url_for('pos_checkout') }}"
-    data-qris-url="{{ url_for('pos_qris_payload') }}"
+    data-payment-url="{{ url_for('pos_payment') }}"
 >
     <aside class="pos-sidebar-mock">
         <a href="{{ url_for('pos') }}" class="pos-sidebar-brand" aria-label="Kyloffee POS">
@@ -15,13 +14,13 @@
 
         <nav class="pos-sidebar-nav" aria-label="POS navigation">
             <a href="{{ url_for('pos') }}" class="active">
-                <span aria-hidden="true">▦</span>
+                <span aria-hidden="true">&#9635;</span>
                 <strong>Order Input</strong>
             </a>
         </nav>
 
         <a href="{{ url_for('logout') }}" class="pos-sidebar-logout">
-            <span aria-hidden="true">↪</span>
+            <span aria-hidden="true">&larr;</span>
             Log Out
         </a>
     </aside>
@@ -30,8 +29,8 @@
         <header class="pos-topbar-mock">
             <h1>Kyloffee POS</h1>
             <label class="pos-search-mock">
-                <input type="search" data-menu-search placeholder="Value" aria-label="Cari menu">
-                <span aria-hidden="true">⌕</span>
+                <input type="search" data-menu-search placeholder="Cari menu, kategori, deskripsi" aria-label="Cari menu">
+                <span aria-hidden="true">&#8981;</span>
             </label>
             <p>Shift : {{ shift }} Staff: {{ staff_name }}</p>
         </header>
@@ -41,7 +40,6 @@
                 <nav class="pos-category-strip" aria-label="Kategori menu">
                     <div class="pos-category-scroll">
                         <button type="button" class="category-filter is-active" data-category-filter="all">All Items</button>
-                        <button type="button" class="category-filter category-filter--ghost" data-filter-reset>Filter</button>
                         {% for category in menu_categories %}
                             <button type="button" class="category-filter" data-category-filter="{{ category }}">{{ category }}</button>
                         {% endfor %}
@@ -60,32 +58,46 @@
                                 data-price="{{ product.price|int }}"
                                 data-stock="{{ product_stock }}"
                                 data-category="{{ product.category }}"
+                                data-description="{{ product.description or '' }}"
                             >
-                                <div class="mock-product-head">
-                                    <div>
-                                        <h3>{{ product.name }}</h3>
-                                        <span>{{ product.category }}</span>
-                                    </div>
+                                <div class="mock-product-media">
                                     {% if product.image %}
                                         <img src="{{ menu_image_url(product.image) }}" alt="{{ product.name }}">
                                     {% else %}
                                         <div class="mock-product-empty">K</div>
                                     {% endif %}
+                                    {% if product_stock <= 0 %}
+                                        <span class="stock-empty-label">Stok Habis</span>
+                                    {% endif %}
                                 </div>
                                 <div class="mock-product-body">
-                                    <p>{{ product.description or product.category }}</p>
+                                    <div class="mock-product-info">
+                                        <span class="mock-product-category">{{ product.category }}</span>
+                                        <h3>{{ product.name }}</h3>
+                                        <p>{{ product.description or product.category }}</p>
+                                    </div>
                                     <div class="mock-product-bottom">
                                         <div>
                                             <strong>Rp {{ "{:,.0f}".format(product.price|int).replace(",", ".") }}</strong>
                                             <small data-stock-label>Stok: {{ product_stock }}</small>
                                         </div>
-                                        <button type="button" class="pos-add-button" data-add-product {% if product_stock <= 0 %}disabled{% endif %} aria-label="Tambah {{ product.name }}">
-                                            {% if product_stock > 0 %}+{% else %}×{% endif %}
+                                        <button
+                                            type="button"
+                                            class="pos-add-button"
+                                            data-add-product
+                                            {% if product_stock <= 0 %}disabled{% endif %}
+                                            aria-label="Tambah {{ product.name }}"
+                                        >
+                                            {% if product_stock > 0 %}+ Tambah{% else %}Stok Habis{% endif %}
                                         </button>
                                     </div>
                                 </div>
                             </article>
                         {% endfor %}
+                        <div class="empty-pos empty-pos--filter" data-menu-empty hidden>
+                            <strong>Menu tidak ditemukan.</strong>
+                            <p>Coba kata kunci lain atau pilih kategori All Items.</p>
+                        </div>
                     {% else %}
                         <div class="empty-pos">
                             <strong>Belum ada menu aktif.</strong>
@@ -118,18 +130,6 @@
                         <span>Subtotal</span>
                         <strong data-summary-subtotal>Rp 0</strong>
                     </div>
-                    <div class="order-summary-line order-summary-line--muted">
-                        <span>Diskon</span>
-                        <strong data-summary-discount>Rp 0</strong>
-                    </div>
-                    <div class="order-summary-line order-summary-line--muted">
-                        <span>Pajak</span>
-                        <strong data-summary-tax>Rp 0</strong>
-                    </div>
-                    <div class="order-summary-line order-summary-line--muted">
-                        <span>Biaya Operasional</span>
-                        <strong data-summary-cost>Rp 0</strong>
-                    </div>
                     <div class="order-summary-line order-summary-total">
                         <span>Total</span>
                         <strong data-summary-total>Rp 0</strong>
@@ -139,104 +139,6 @@
                 </footer>
             </aside>
         </section>
-    </section>
-
-    <section class="payment-modal" data-payment-modal hidden>
-        <div class="payment-modal__backdrop" data-close-payment></div>
-        <aside class="payment-modal__panel">
-            <header class="payment-modal__header">
-                <div>
-                    <span class="payment-eyebrow">Payment</span>
-                    <h2>Complete Order</h2>
-                </div>
-                <button type="button" data-close-payment aria-label="Tutup pembayaran">×</button>
-            </header>
-
-            <div class="pos-payment-form">
-                <label>
-                    Nama Pelanggan
-                    <input type="text" data-customer-name placeholder="Walk-in Customer">
-                </label>
-                <label>
-                    Diskon
-                    <input type="number" data-discount-amount min="0" value="0">
-                </label>
-                <label>
-                    Pajak
-                    <input type="number" data-tax-amount min="0" value="0">
-                </label>
-                <label>
-                    Biaya Operasional
-                    <input type="number" data-operational-cost min="0" value="0">
-                </label>
-            </div>
-
-            <section class="payment-method-section">
-                <h3>Payment Method</h3>
-                <div class="payment-method-grid">
-                    <button type="button" class="payment-method-card is-active" data-payment-method="Cash">
-                        <span class="payment-method-icon">Rp</span>
-                        <strong>Cash</strong>
-                        <small>Bayar tunai dan hitung kembalian otomatis.</small>
-                    </button>
-                    <button type="button" class="payment-method-card" data-payment-method="QRIS">
-                        <span class="payment-method-icon">QR</span>
-                        <strong>QRIS</strong>
-                        <small>Generate QR otomatis untuk simulasi pembayaran.</small>
-                    </button>
-                </div>
-            </section>
-
-            <section class="payment-mode payment-mode--cash is-active" data-payment-mode="Cash">
-                <div class="cash-summary">
-                    <div>
-                        <span>Received Amount</span>
-                        <strong data-cash-received>Rp 0</strong>
-                    </div>
-                    <div>
-                        <span>Change</span>
-                        <strong data-cash-change>Rp 0</strong>
-                    </div>
-                </div>
-
-                <div class="quick-cash-row">
-                    <button type="button" data-quick-cash="20000">Rp20.000</button>
-                    <button type="button" data-quick-cash="50000">Rp50.000</button>
-                    <button type="button" data-quick-cash="100000">Rp100.000</button>
-                </div>
-
-                <div class="cash-keypad" aria-label="Keypad nominal pembayaran tunai">
-                    {% for key in ['1','2','3','4','5','6','7','8','9','00','0','back'] %}
-                        <button type="button" data-cash-key="{{ key }}">
-                            {% if key == 'back' %}&larr;{% else %}{{ key }}{% endif %}
-                        </button>
-                    {% endfor %}
-                    <button type="button" class="keypad-wide" data-cash-key="clear">Clear</button>
-                </div>
-
-                <button type="button" class="pos-checkout-button" data-complete-cash disabled>Complete Payment</button>
-            </section>
-
-            <section class="payment-mode payment-mode--qris" data-payment-mode="QRIS">
-                <div class="qris-card">
-                    <div class="qris-frame">
-                        <div class="qris-placeholder" data-qris-placeholder>QRIS</div>
-                        <img src="" alt="QR Code pembayaran QRIS" data-qris-image hidden>
-                    </div>
-                    <div class="qris-details">
-                        <span>Total pembayaran</span>
-                        <strong data-qris-total>Rp 0</strong>
-                        <p>Scan QR Code menggunakan aplikasi pembayaran. QR dibuat otomatis dari invoice, total, dan waktu transaksi.</p>
-                        <small data-qris-order>Invoice akan dibuat setelah keranjang siap.</small>
-                    </div>
-                </div>
-
-                <button type="button" class="pos-checkout-button qris-status-button" data-check-qris disabled>
-                    Check Payment Status
-                </button>
-                <div class="qris-status" data-qris-status>Menunggu QR dibuat.</div>
-            </section>
-        </aside>
     </section>
 </main>
 {% endblock %}

@@ -74,7 +74,6 @@
                                         <th>Tanggal</th>
                                         <th>Jml Transaksi</th>
                                         <th>Pendapatan</th>
-                                        <th>Biaya</th>
                                         <th>Laba Bersih</th>
                                     </tr>
                                 </thead>
@@ -85,7 +84,6 @@
                                                 <td>{{ item.date }}</td>
                                                 <td>{{ item.transactions }}</td>
                                                 <td>{{ item.income }}</td>
-                                                <td>{{ item.cost }}</td>
                                                 <td><strong>{{ item.profit }}</strong></td>
                                             </tr>
                                         {% endfor %}
@@ -93,12 +91,11 @@
                                             <td>Total</td>
                                             <td>{{ report.daily_totals.transactions }}</td>
                                             <td>{{ report.daily_totals.income }}</td>
-                                            <td>{{ report.daily_totals.cost }}</td>
                                             <td>{{ report.daily_totals.profit }}</td>
                                         </tr>
                                     {% else %}
                                         <tr>
-                                            <td colspan="5" class="sheet-empty">Belum ada pendapatan harian.</td>
+                                            <td colspan="4" class="sheet-empty">Belum ada pendapatan harian.</td>
                                         </tr>
                                     {% endif %}
                                 </tbody>

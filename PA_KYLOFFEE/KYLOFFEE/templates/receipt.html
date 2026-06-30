@@ -1,29 +1,39 @@
 {% extends 'base.html' %}
 {% block title %}Receipt - Kyloffee{% endblock %}
 {% block body %}
-<main class="receipt-page">
-    <section class="receipt-shell">
-        <div class="receipt-actions no-print">
-            <a href="{{ url_for('payment_success', order_code=transaction.order_code) }}" class="secondary-payment-button">Back</a>
-            <button type="button" onclick="window.print()" class="pos-checkout-button">Print Receipt</button>
-            <a href="{{ url_for('pos') }}" class="secondary-payment-button">New Transaction</a>
-        </div>
-
-        <article class="receipt-paper">
-            <header class="receipt-header">
-                <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="Kyloffee" class="receipt-logo">
+<main class="receipt-page receipt-page--thermal">
+    <section class="receipt-shell receipt-shell--thermal">
+        <article class="thermal-receipt" id="receipt-print-area">
+            <header class="thermal-receipt__header">
+                <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="Kyloffee" class="thermal-receipt__logo">
                 <h1>Kyloffee</h1>
                 <p>Jl. Kyloffee Raya No. 1, Indonesia</p>
             </header>
 
-            <div class="receipt-meta">
-                <div><span>Tanggal</span><strong>{{ transaction.date_display }}</strong></div>
-                <div><span>Jam</span><strong>{{ transaction.time_display }}</strong></div>
-                <div><span>Kasir</span><strong>{{ transaction.staff_name or 'Staff' }}</strong></div>
-                <div><span>Invoice</span><strong>{{ transaction.order_code }}</strong></div>
-            </div>
+            <div class="thermal-divider"></div>
 
-            <table class="receipt-table">
+            <section class="thermal-meta">
+                <div>
+                    <span>Tanggal</span>
+                    <strong>{{ transaction.date_display }}</strong>
+                </div>
+                <div>
+                    <span>Jam</span>
+                    <strong>{{ transaction.time_display }}</strong>
+                </div>
+                <div>
+                    <span>Kasir</span>
+                    <strong>{{ transaction.staff_name or 'Staff' }}</strong>
+                </div>
+                <div>
+                    <span>Invoice</span>
+                    <strong>{{ transaction.order_code }}</strong>
+                </div>
+            </section>
+
+            <div class="thermal-divider"></div>
+
+            <table class="thermal-table">
                 <thead>
                     <tr>
                         <th>Menu</th>
@@ -36,7 +46,7 @@
                         <tr>
                             <td>
                                 <strong>{{ item.menu_name }}</strong>
-                                <small>{{ item.unit_price_display }}</small>
+                                <span>{{ item.unit_price_display }}</span>
                             </td>
                             <td>{{ item.quantity }}</td>
                             <td>{{ item.subtotal_display }}</td>
@@ -45,21 +55,40 @@
                 </tbody>
             </table>
 
-            <div class="receipt-total-list">
-                <div><span>Subtotal</span><strong>{{ transaction.subtotal_display }}</strong></div>
-                <div><span>Diskon</span><strong>{{ transaction.discount_display }}</strong></div>
-                <div><span>Pajak</span><strong>{{ transaction.tax_display }}</strong></div>
-                <div><span>Metode</span><strong>{{ payment.method }}</strong></div>
-                <div class="receipt-grand-total"><span>Total</span><strong>{{ transaction.total_display }}</strong></div>
-                <div><span>Nominal Diterima</span><strong>{{ received_display }}</strong></div>
-                <div><span>Kembalian</span><strong>{{ change_display }}</strong></div>
-            </div>
+            <div class="thermal-divider"></div>
 
-            <footer class="receipt-footer">
+            <section class="thermal-total-list">
+                <div class="thermal-grand-total">
+                    <span>Total</span>
+                    <strong>{{ transaction.total_display }}</strong>
+                </div>
+                <div>
+                    <span>Metode</span>
+                    <strong>{{ payment.method }}</strong>
+                </div>
+                <div>
+                    <span>Nominal Diterima</span>
+                    <strong>{{ received_display }}</strong>
+                </div>
+                <div>
+                    <span>Kembalian</span>
+                    <strong>{{ change_display }}</strong>
+                </div>
+            </section>
+
+            <div class="thermal-divider"></div>
+
+            <footer class="thermal-receipt__footer">
                 <strong>Terima kasih</strong>
                 <p>Silakan datang kembali ke Kyloffee.</p>
             </footer>
         </article>
+
+        <div class="receipt-actions no-print">
+            <a href="{{ url_for('payment_success', order_code=transaction.order_code) }}" class="secondary-payment-button">Back</a>
+            <button type="button" onclick="window.print()" class="pos-checkout-button">Print Receipt</button>
+            <a href="{{ url_for('pos') }}" class="secondary-payment-button">New Transaction</a>
+        </div>
     </section>
 </main>
 {% endblock %}
