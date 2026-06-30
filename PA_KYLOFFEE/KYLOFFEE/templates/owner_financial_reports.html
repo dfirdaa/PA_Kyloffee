@@ -87,6 +87,7 @@
                                     <th>Waktu</th>
                                     <th>Item</th>
                                     <th>Pelanggan</th>
+                                    <th>Kasir</th>
                                     <th>Total</th>
                                     <th>Status</th>
                                 </tr>
@@ -99,13 +100,14 @@
                                             <td>{{ trx.time }}</td>
                                             <td>{{ trx.items }} Item</td>
                                             <td>{{ trx.customer }}</td>
+                                            <td>{{ trx.staff }}</td>
                                             <td>{{ trx.total }}</td>
                                             <td><span class="status-pill">{{ trx.status }}</span></td>
                                         </tr>
                                     {% endfor %}
                                 {% else %}
                                     <tr>
-                                        <td colspan="6" class="sheet-empty">Belum ada transaksi.</td>
+                                        <td colspan="7" class="sheet-empty">Belum ada transaksi.</td>
                                     </tr>
                                 {% endif %}
                             </tbody>

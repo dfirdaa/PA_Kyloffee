@@ -116,6 +116,7 @@
                                         <th>Tanggal</th>
                                         <th>Waktu</th>
                                         <th>Pelanggan</th>
+                                        <th>Kasir</th>
                                         <th>Metode Bayar</th>
                                         <th>Total</th>
                                         <th>Status</th>
@@ -129,6 +130,7 @@
                                                 <td>{{ trx.date }}</td>
                                                 <td>{{ trx.time }}</td>
                                                 <td>{{ trx.customer }}</td>
+                                                <td>{{ trx.staff }}</td>
                                                 <td>{{ trx.method }}</td>
                                                 <td>{{ trx.total }}</td>
                                                 <td>{{ trx.status }}</td>
@@ -136,7 +138,7 @@
                                         {% endfor %}
                                     {% else %}
                                         <tr>
-                                            <td colspan="7" class="sheet-empty">Belum ada transaksi.</td>
+                                            <td colspan="8" class="sheet-empty">Belum ada transaksi.</td>
                                         </tr>
                                     {% endif %}
                                 </tbody>

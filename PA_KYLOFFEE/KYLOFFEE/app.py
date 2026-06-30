@@ -571,6 +571,21 @@ def staff_required(view_func):
             return redirect(url_for("login"))
         if session.get("role") != "staff":
             return redirect_for_role()
+
+        user = get_db().execute(
+            "SELECT role, is_active FROM users WHERE id = ?",
+            (session.get("user_id"),),
+        ).fetchone()
+        user_data = row_to_dict(user)
+        if not user_data or str(user_data.get("role") or "").strip().lower() != "staff":
+            session.clear()
+            flash("Sesi tidak valid. Silakan login ulang.", "error")
+            return redirect(url_for("login"))
+        if int(user_data.get("is_active", 1) or 0) != 1:
+            session.clear()
+            flash("Akun staff ini sedang nonaktif. Silakan hubungi owner.", "error")
+            return redirect(url_for("login"))
+
         return view_func(**kwargs)
 
     return wrapped_view
@@ -795,18 +810,20 @@ def fetch_recent_transactions(start_date, end_date, limit=5):
         db.execute(
             """
             SELECT
-                order_code,
-                transaction_date,
-                transaction_time,
-                customer_name,
-                payment_method,
-                total_amount,
-                item_count,
-                status
-            FROM pos_transactions
-            WHERE transaction_date BETWEEN ? AND ?
-              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
-            ORDER BY transaction_date DESC, transaction_time DESC, id DESC
+                t.order_code,
+                t.transaction_date,
+                t.transaction_time,
+                t.customer_name,
+                t.payment_method,
+                t.total_amount,
+                t.item_count,
+                t.status,
+                u.full_name AS staff_name
+            FROM pos_transactions t
+            LEFT JOIN users u ON u.id = t.staff_id
+            WHERE t.transaction_date BETWEEN ? AND ?
+              AND LOWER(t.status) IN ('selesai', 'paid', 'completed', 'complete')
+            ORDER BY t.transaction_date DESC, t.transaction_time DESC, t.id DESC
             LIMIT ?
             """,
             (start_date.isoformat(), end_date.isoformat(), limit),
@@ -824,6 +841,7 @@ def fetch_recent_transactions(start_date, end_date, limit=5):
                 "time": transaction_time or "-",
                 "customer": row.get("customer_name") or "Walk-in Customer",
                 "method": row.get("payment_method") or "Tunai",
+                "staff": row.get("staff_name") or "-",
                 "total": format_currency(row.get("total_amount") or 0),
                 "items": int(row.get("item_count") or 0),
                 "status": str(row.get("status") or "Selesai").title(),
@@ -1095,6 +1113,191 @@ def get_current_shift():
     if 12 <= current_hour < 18:
         return "Siang"
     return "Malam"
+
+
+def parse_pos_amount(value, field_label):
+    if value in (None, ""):
+        return 0
+    try:
+        amount = int(str(value).strip().replace(".", "").replace(",", ""))
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_label} harus berupa angka.")
+    if amount < 0:
+        raise ValueError(f"{field_label} tidak boleh negatif.")
+    return amount
+
+
+def normalize_pos_items(raw_items):
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("Keranjang masih kosong.")
+
+    items = {}
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            raise ValueError("Data item POS tidak valid.")
+        try:
+            menu_id = int(raw_item.get("menu_id"))
+            quantity = int(raw_item.get("quantity", 1))
+        except (TypeError, ValueError):
+            raise ValueError("Data item POS tidak valid.")
+        if menu_id < 1 or quantity < 1:
+            raise ValueError("Jumlah item POS tidak valid.")
+        if quantity > 999:
+            raise ValueError("Jumlah item terlalu besar.")
+        items[menu_id] = items.get(menu_id, 0) + quantity
+
+    return items
+
+
+def generate_order_code(now=None):
+    now = now or datetime.now()
+    return f"POS-{now:%Y%m%d%H%M%S}-{uuid.uuid4().hex[:4].upper()}"
+
+
+def create_pos_transaction(data):
+    init_menu_table()
+    init_pos_tables()
+
+    items = normalize_pos_items(data.get("items"))
+    customer_name = str(data.get("customer_name") or "").strip() or "Walk-in Customer"
+    payment_method = str(data.get("payment_method") or "Tunai").strip() or "Tunai"
+    discount_amount = parse_pos_amount(data.get("discount_amount"), "Diskon")
+    tax_amount = parse_pos_amount(data.get("tax_amount"), "Pajak")
+    operational_cost = parse_pos_amount(data.get("operational_cost"), "Biaya operasional")
+
+    db = get_db()
+    placeholders = ", ".join(["?"] * len(items))
+    menu_rows = fetch_all_dict(
+        db.execute(
+            f"""
+            SELECT id, name, price, stock, is_active
+            FROM menus
+            WHERE id IN ({placeholders})
+            """,
+            tuple(items.keys()),
+        )
+    )
+    menu_map = {int(row["id"]): row for row in menu_rows}
+
+    prepared_items = []
+    validation_errors = []
+    subtotal_amount = 0
+    item_count = 0
+
+    for menu_id, quantity in items.items():
+        menu = menu_map.get(menu_id)
+        if menu is None:
+            validation_errors.append(f"Menu ID {menu_id} tidak ditemukan.")
+            continue
+
+        menu_name = menu.get("name") or "Menu"
+        is_active = int(menu.get("is_active", 0) or 0) == 1
+        stock = int(menu.get("stock") or 0)
+        unit_price = int(menu.get("price") or 0)
+
+        if not is_active:
+            validation_errors.append(f"{menu_name} sedang nonaktif.")
+            continue
+        if quantity > stock:
+            validation_errors.append(f"Stok {menu_name} tidak cukup. Tersedia {stock}.")
+            continue
+
+        line_subtotal = unit_price * quantity
+        subtotal_amount += line_subtotal
+        item_count += quantity
+        prepared_items.append(
+            {
+                "menu_id": menu_id,
+                "menu_name": menu_name,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "subtotal": line_subtotal,
+                "stock": stock,
+            }
+        )
+
+    if validation_errors:
+        raise ValueError(" ".join(validation_errors))
+    if discount_amount > subtotal_amount + tax_amount:
+        raise ValueError("Diskon tidak boleh lebih besar dari subtotal dan pajak.")
+
+    total_amount = subtotal_amount - discount_amount + tax_amount
+    now = datetime.now()
+    order_code = generate_order_code(now)
+
+    try:
+        cursor = db.execute(
+            """
+            INSERT INTO pos_transactions (
+                order_code, transaction_date, transaction_time, customer_name,
+                payment_method, subtotal_amount, discount_amount, tax_amount,
+                operational_cost, total_amount, item_count, status, staff_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                order_code,
+                now.date().isoformat(),
+                now.strftime("%H:%M:%S"),
+                customer_name,
+                payment_method,
+                subtotal_amount,
+                discount_amount,
+                tax_amount,
+                operational_cost,
+                total_amount,
+                item_count,
+                "Selesai",
+                session.get("user_id"),
+            ),
+        )
+        transaction_id = cursor.lastrowid
+
+        for item in prepared_items:
+            stock_update = db.execute(
+                """
+                UPDATE menus
+                SET stock = stock - ?
+                WHERE id = ? AND stock >= ?
+                """,
+                (item["quantity"], item["menu_id"], item["quantity"]),
+            )
+            if getattr(stock_update, "rowcount", 0) != 1:
+                raise ValueError(f"Stok {item['menu_name']} baru saja berubah. Silakan cek ulang keranjang.")
+
+            db.execute(
+                """
+                INSERT INTO pos_transaction_items (
+                    transaction_id, menu_id, menu_name, quantity, unit_price, subtotal
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    transaction_id,
+                    item["menu_id"],
+                    item["menu_name"],
+                    item["quantity"],
+                    item["unit_price"],
+                    item["subtotal"],
+                ),
+            )
+            item["stock_remaining"] = item["stock"] - item["quantity"]
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "order_code": order_code,
+        "subtotal_amount": subtotal_amount,
+        "discount_amount": discount_amount,
+        "tax_amount": tax_amount,
+        "operational_cost": operational_cost,
+        "total_amount": total_amount,
+        "item_count": item_count,
+        "items": prepared_items,
+    }
 
 
 def save_menu_image(uploaded_file):
@@ -1863,8 +2066,37 @@ def pos():
     return render_template(
         "pos.html",
         shift=get_current_shift(),
+        staff_name=session.get("full_name", "Staff"),
         menu_categories=get_ordered_menu_categories(row["category"] for row in category_rows),
         products=[dict(product) for product in products],
+    )
+
+
+@app.route("/api/pos/checkout", methods=["POST"])
+@staff_required
+def pos_checkout():
+    data = request.get_json(silent=True) or {}
+    try:
+        transaction = create_pos_transaction(data)
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+    except Exception:
+        app.logger.exception("POS checkout failed.")
+        return jsonify({"success": False, "message": "Gagal menyimpan transaksi POS. Silakan coba lagi."}), 500
+
+    return jsonify(
+        {
+            "success": True,
+            "message": f"Transaksi {transaction['order_code']} berhasil disimpan.",
+            "transaction": {
+                **transaction,
+                "subtotal_display": format_currency(transaction["subtotal_amount"]),
+                "discount_display": format_currency(transaction["discount_amount"]),
+                "tax_display": format_currency(transaction["tax_amount"]),
+                "operational_cost_display": format_currency(transaction["operational_cost"]),
+                "total_display": format_currency(transaction["total_amount"]),
+            },
+        }
     )
 
 
