@@ -4,7 +4,7 @@ import sqlite3
 import uuid
 from functools import wraps
 from pathlib import Path
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
 from flask import (
@@ -130,6 +130,7 @@ class DatabaseConnection:
         return getattr(self.conn, name)
 
 STAFF_INVITATION_CODE = "KYLOFFEE-STAFF"
+STAFF_DEFAULT_PASSWORD = os.getenv("STAFF_DEFAULT_PASSWORD", "kyloffee123")
 MIN_MENU_PRICE = 500
 MENU_CATEGORIES = [
     "Black Series",
@@ -140,6 +141,8 @@ MENU_CATEGORIES = [
     "Mocktail Series",
     "Food",
 ]
+STAFF_POSITIONS = ["Kasir", "Barista", "Admin", "Supervisor"]
+STAFF_STATUSES = ["Aktif", "Cuti", "Nonaktif"]
 
 app = Flask(
     __name__,
@@ -262,11 +265,43 @@ def fetch_all_dict(cursor):
     return [dict(zip(columns, row)) for row in rows]
 
 
+def row_to_dict(row):
+    if row is None:
+        return {}
+    if isinstance(row, dict):
+        return row
+    return dict(row)
+
+
 @app.teardown_appcontext
 def close_db(exception=None):
     db = g.pop("db", None)
     if db is not None:
         db.close()
+
+
+def ensure_user_columns():
+    db = get_db()
+    cursor = db.cursor()
+
+    if db.is_mysql:
+        cursor.execute("SHOW COLUMNS FROM users")
+        fetched = cursor.fetchall()
+        columns = {row["Field"] if isinstance(row, dict) else row[0] for row in fetched}
+    else:
+        cursor.execute("PRAGMA table_info(users)")
+        columns = {row[1] for row in cursor.fetchall()}
+
+    if "staff_phone" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN staff_phone VARCHAR(40)" if db.is_mysql else "ALTER TABLE users ADD COLUMN staff_phone TEXT")
+    if "staff_position" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN staff_position VARCHAR(100) DEFAULT 'Staff'" if db.is_mysql else "ALTER TABLE users ADD COLUMN staff_position TEXT DEFAULT 'Staff'")
+    if "joined_date" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN joined_date DATE" if db.is_mysql else "ALTER TABLE users ADD COLUMN joined_date TEXT")
+    if "staff_status" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN staff_status VARCHAR(40) DEFAULT 'Aktif'" if db.is_mysql else "ALTER TABLE users ADD COLUMN staff_status TEXT DEFAULT 'Aktif'")
+    if "is_active" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN is_active TINYINT NOT NULL DEFAULT 1" if db.is_mysql else "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
 
 
 def init_db():
@@ -281,6 +316,11 @@ def init_db():
                 email VARCHAR(255) UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 role VARCHAR(50) NOT NULL,
+                staff_phone VARCHAR(40),
+                staff_position VARCHAR(100) DEFAULT 'Staff',
+                joined_date DATE,
+                staff_status VARCHAR(40) DEFAULT 'Aktif',
+                is_active TINYINT NOT NULL DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -302,6 +342,11 @@ def init_db():
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL,
+                staff_phone TEXT,
+                staff_position TEXT DEFAULT 'Staff',
+                joined_date TEXT,
+                staff_status TEXT DEFAULT 'Aktif',
+                is_active INTEGER NOT NULL DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -311,6 +356,8 @@ def init_db():
             );
             """
         )
+
+    ensure_user_columns()
 
 
 def ensure_menu_columns():
@@ -409,6 +456,80 @@ def init_menu_table():
         execute_commit(
             "INSERT INTO app_settings (key, value) VALUES (?, ?)",
             ("menus_seed_migration_done", "1"),
+        )
+
+
+def init_pos_tables():
+    db = get_db()
+
+    if db.is_mysql:
+        execute_script_commit(
+            """
+            CREATE TABLE IF NOT EXISTS pos_transactions (
+                id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                order_code VARCHAR(60) NOT NULL UNIQUE,
+                transaction_date DATE NOT NULL,
+                transaction_time TIME NOT NULL,
+                customer_name VARCHAR(255) DEFAULT 'Walk-in Customer',
+                payment_method VARCHAR(80) DEFAULT 'Tunai',
+                subtotal_amount BIGINT NOT NULL DEFAULT 0,
+                discount_amount BIGINT NOT NULL DEFAULT 0,
+                tax_amount BIGINT NOT NULL DEFAULT 0,
+                operational_cost BIGINT NOT NULL DEFAULT 0,
+                total_amount BIGINT NOT NULL DEFAULT 0,
+                item_count INT NOT NULL DEFAULT 0,
+                status VARCHAR(40) NOT NULL DEFAULT 'Selesai',
+                staff_id BIGINT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        execute_script_commit(
+            """
+            CREATE TABLE IF NOT EXISTS pos_transaction_items (
+                id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                transaction_id BIGINT NOT NULL,
+                menu_id BIGINT NULL,
+                menu_name VARCHAR(255) NOT NULL,
+                quantity INT NOT NULL DEFAULT 1,
+                unit_price BIGINT NOT NULL DEFAULT 0,
+                subtotal BIGINT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    else:
+        execute_script_commit(
+            """
+            CREATE TABLE IF NOT EXISTS pos_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_code TEXT NOT NULL UNIQUE,
+                transaction_date TEXT NOT NULL,
+                transaction_time TEXT NOT NULL,
+                customer_name TEXT DEFAULT 'Walk-in Customer',
+                payment_method TEXT DEFAULT 'Tunai',
+                subtotal_amount INTEGER NOT NULL DEFAULT 0,
+                discount_amount INTEGER NOT NULL DEFAULT 0,
+                tax_amount INTEGER NOT NULL DEFAULT 0,
+                operational_cost INTEGER NOT NULL DEFAULT 0,
+                total_amount INTEGER NOT NULL DEFAULT 0,
+                item_count INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'Selesai',
+                staff_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS pos_transaction_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transaction_id INTEGER NOT NULL,
+                menu_id INTEGER,
+                menu_name TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                unit_price INTEGER NOT NULL DEFAULT 0,
+                subtotal INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
         )
 
 
@@ -521,50 +642,338 @@ def get_ordered_menu_categories(categories):
 
 
 def format_report_datetime(value):
+    return f"{format_short_date(value.date())} {value:%H:%M} WIB"
+
+
+def format_currency(amount):
+    return f"Rp {int(amount or 0):,}".replace(",", ".")
+
+
+def format_short_date(value):
+    month_names = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+    return f"{value.day} {month_names[value.month - 1]} {value.year}"
+
+
+def format_month_name(value):
     month_names = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
+        "Januari",
+        "Februari",
+        "Maret",
+        "April",
         "Mei",
-        "Jun",
-        "Jul",
-        "Agu",
-        "Sep",
-        "Okt",
-        "Nov",
-        "Des",
+        "Juni",
+        "Juli",
+        "Agustus",
+        "September",
+        "Oktober",
+        "November",
+        "Desember",
     ]
-    return f"{value.day} {month_names[value.month - 1]} {value.year} {value:%H:%M} WIB"
+    return f"{month_names[value.month - 1]} {value.year}"
 
 
-def build_financial_report():
-    now = datetime.now()
+def format_report_period(start_date, end_date):
+    if start_date == end_date:
+        return format_short_date(start_date)
+    if start_date.month == end_date.month and start_date.year == end_date.year:
+        month_names = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+        return f"{start_date.day} - {end_date.day} {month_names[start_date.month - 1]} {start_date.year}"
+    return f"{format_short_date(start_date)} - {format_short_date(end_date)}"
+
+
+def parse_report_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def resolve_report_period(args):
+    today = datetime.now().date()
+    default_start = today.replace(day=1)
+    start_date = parse_report_date(args.get("date_from")) or default_start
+    end_date = parse_report_date(args.get("date_to")) or today
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+    return start_date, end_date
+
+
+def shift_month(source_date, month_delta):
+    month_index = source_date.month - 1 + month_delta
+    year = source_date.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
+
+
+def get_period_totals(start_date, end_date):
+    db = get_db()
+    row = row_to_dict(
+        db.execute(
+            """
+            SELECT
+                COALESCE(SUM(total_amount), 0) AS revenue,
+                COALESCE(SUM(operational_cost), 0) AS cost,
+                COUNT(*) AS transactions
+            FROM pos_transactions
+            WHERE transaction_date BETWEEN ? AND ?
+              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        ).fetchone()
+    )
+    revenue = int(row.get("revenue") or 0)
+    cost = int(row.get("cost") or 0)
+    transactions = int(row.get("transactions") or 0)
     return {
-        "period": "Belum ada transaksi",
-        "calendar_label": "Pilih periode",
+        "revenue": revenue,
+        "cost": cost,
+        "profit": revenue - cost,
+        "transactions": transactions,
+    }
+
+
+def build_trend_text(current_value, previous_value, empty_text="Belum ada transaksi"):
+    current_value = int(current_value or 0)
+    previous_value = int(previous_value or 0)
+    if previous_value == 0:
+        return empty_text if current_value == 0 else "Baru ada transaksi"
+    percentage = ((current_value - previous_value) / previous_value) * 100
+    sign = "+" if percentage >= 0 else "-"
+    return f"{sign}{abs(percentage):.1f}% dari periode lalu"
+
+
+def trend_tone(current_value, previous_value):
+    current_value = int(current_value or 0)
+    previous_value = int(previous_value or 0)
+    if previous_value == 0 or current_value == previous_value:
+        return "neutral"
+    return "positive" if current_value > previous_value else "negative"
+
+
+def fetch_daily_details(start_date, end_date):
+    db = get_db()
+    rows = fetch_all_dict(
+        db.execute(
+            """
+            SELECT
+                transaction_date,
+                COUNT(*) AS transactions,
+                COALESCE(SUM(total_amount), 0) AS income,
+                COALESCE(SUM(operational_cost), 0) AS cost
+            FROM pos_transactions
+            WHERE transaction_date BETWEEN ? AND ?
+              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
+            GROUP BY transaction_date
+            ORDER BY transaction_date DESC
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+    )
+
+    details = []
+    for row in rows:
+        income = int(row.get("income") or 0)
+        cost = int(row.get("cost") or 0)
+        detail_date = parse_report_date(str(row.get("transaction_date")))
+        details.append(
+            {
+                "date": format_short_date(detail_date) if detail_date else row.get("transaction_date"),
+                "transactions": int(row.get("transactions") or 0),
+                "income": format_currency(income),
+                "cost": format_currency(cost),
+                "profit": format_currency(income - cost),
+            }
+        )
+    return details
+
+
+def fetch_recent_transactions(start_date, end_date, limit=5):
+    db = get_db()
+    rows = fetch_all_dict(
+        db.execute(
+            """
+            SELECT
+                order_code,
+                transaction_date,
+                transaction_time,
+                customer_name,
+                payment_method,
+                total_amount,
+                item_count,
+                status
+            FROM pos_transactions
+            WHERE transaction_date BETWEEN ? AND ?
+              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
+            ORDER BY transaction_date DESC, transaction_time DESC, id DESC
+            LIMIT ?
+            """,
+            (start_date.isoformat(), end_date.isoformat(), limit),
+        )
+    )
+
+    transactions = []
+    for row in rows:
+        transaction_date = parse_report_date(str(row.get("transaction_date")))
+        transaction_time = str(row.get("transaction_time") or "")[:5]
+        transactions.append(
+            {
+                "id": row.get("order_code") or "-",
+                "date": format_short_date(transaction_date) if transaction_date else row.get("transaction_date"),
+                "time": transaction_time or "-",
+                "customer": row.get("customer_name") or "Walk-in Customer",
+                "method": row.get("payment_method") or "Tunai",
+                "total": format_currency(row.get("total_amount") or 0),
+                "items": int(row.get("item_count") or 0),
+                "status": str(row.get("status") or "Selesai").title(),
+            }
+        )
+    return transactions
+
+
+def fetch_hourly_sales(start_date, end_date):
+    db = get_db()
+    rows = fetch_all_dict(
+        db.execute(
+            """
+            SELECT transaction_time, total_amount
+            FROM pos_transactions
+            WHERE transaction_date BETWEEN ? AND ?
+              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+    )
+
+    hourly_values = {hour: 0 for hour in range(8, 23)}
+    for row in rows:
+        try:
+            hour = int(str(row.get("transaction_time") or "")[:2])
+        except ValueError:
+            continue
+        if hour in hourly_values:
+            hourly_values[hour] += int(row.get("total_amount") or 0)
+
+    max_value = max(hourly_values.values()) if hourly_values else 0
+    chart = []
+    for hour, amount in hourly_values.items():
+        height = int((amount / max_value) * 100) if max_value else 0
+        chart.append(
+            {
+                "hour": f"{hour:02d}:00",
+                "amount": format_currency(amount),
+                "height": height,
+                "has_value": amount > 0,
+                "is_peak": max_value > 0 and amount == max_value,
+                "label_visible": hour % 2 == 0,
+            }
+        )
+    return chart
+
+
+def build_monthly_summary(end_date):
+    current_month = end_date.replace(day=1)
+    rows = []
+    for month_delta in (-2, -1, 0):
+        month_start = shift_month(current_month, month_delta)
+        month_end = shift_month(month_start, 1) - timedelta(days=1)
+        totals = get_period_totals(month_start, month_end)
+        rows.append(
+            {
+                "month": format_month_name(month_start),
+                "income": format_currency(totals["revenue"]),
+                "profit": format_currency(totals["profit"]),
+                "is_current": month_delta == 0,
+            }
+        )
+    return rows
+
+
+def build_financial_report(args=None):
+    init_pos_tables()
+    args = args or request.args
+    start_date, end_date = resolve_report_period(args)
+    now = datetime.now()
+    totals = get_period_totals(start_date, end_date)
+    day_count = max((end_date - start_date).days + 1, 1)
+    previous_end = start_date - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=day_count - 1)
+    previous_totals = get_period_totals(previous_start, previous_end)
+
+    today = now.date()
+    today_totals = get_period_totals(today, today)
+    average_income = totals["revenue"] // day_count
+    previous_average = previous_totals["revenue"] // day_count if day_count else 0
+    period_label = format_report_period(start_date, end_date)
+    daily_details = fetch_daily_details(start_date, end_date)
+    recent_transactions = fetch_recent_transactions(start_date, end_date, limit=5)
+
+    return {
+        "period": period_label,
+        "calendar_label": period_label,
         "printed_at": format_report_datetime(now),
-        "has_data": False,
+        "date_from": start_date.isoformat(),
+        "date_to": end_date.isoformat(),
+        "has_data": totals["transactions"] > 0,
         "dashboard_metrics": [
-            {"label": "Total Pendapatan", "value": "Rp 0", "trend": "Belum ada transaksi", "tone": "neutral"},
-            {"label": "Total Biaya Operasional", "value": "Rp 0", "trend": "", "tone": "neutral"},
-            {"label": "Laba Bersih", "value": "Rp 0", "trend": "", "tone": "neutral"},
-            {"label": "Total Transaksi", "value": "0", "trend": "", "tone": "neutral"},
-            {"label": "Pendapatan Hari Ini", "value": "Rp 0", "trend": "", "tone": "neutral"},
-            {"label": "Rata-rata Pendapatan Harian", "value": "Rp 0", "trend": "", "tone": "neutral"},
+            {
+                "label": "Total Pendapatan",
+                "value": format_currency(totals["revenue"]),
+                "trend": build_trend_text(totals["revenue"], previous_totals["revenue"]),
+                "tone": trend_tone(totals["revenue"], previous_totals["revenue"]),
+            },
+            {
+                "label": "Total Biaya Operasional",
+                "value": format_currency(totals["cost"]),
+                "trend": build_trend_text(totals["cost"], previous_totals["cost"], "Belum ada biaya"),
+                "tone": trend_tone(previous_totals["cost"], totals["cost"]),
+            },
+            {
+                "label": "Laba Bersih",
+                "value": format_currency(totals["profit"]),
+                "trend": build_trend_text(totals["profit"], previous_totals["profit"], "Belum ada transaksi"),
+                "tone": trend_tone(totals["profit"], previous_totals["profit"]),
+            },
+            {
+                "label": "Total Transaksi",
+                "value": str(totals["transactions"]),
+                "trend": build_trend_text(totals["transactions"], previous_totals["transactions"]),
+                "tone": trend_tone(totals["transactions"], previous_totals["transactions"]),
+            },
+            {
+                "label": "Pendapatan Hari Ini",
+                "value": format_currency(today_totals["revenue"]),
+                "trend": "Dari transaksi tanggal ini",
+                "tone": "neutral",
+            },
+            {
+                "label": "Rata-rata Pendapatan Harian",
+                "value": format_currency(average_income),
+                "trend": build_trend_text(average_income, previous_average),
+                "tone": trend_tone(average_income, previous_average),
+            },
         ],
         "print_summary": [
-            {"label": "Total Pendapatan (Revenue)", "value": "Rp 0", "tone": "normal"},
-            {"label": "Total Biaya Operasional", "value": "Rp 0", "tone": "danger"},
-            {"label": "Total Transaksi", "value": "0", "tone": "normal"},
-            {"label": "Rata-rata Pendapatan Harian", "value": "Rp 0", "tone": "normal"},
+            {"label": "Total Pendapatan (Revenue)", "value": format_currency(totals["revenue"]), "tone": "normal"},
+            {"label": "Total Biaya Operasional", "value": format_currency(totals["cost"]), "tone": "danger"},
+            {"label": "Total Transaksi", "value": str(totals["transactions"]), "tone": "normal"},
+            {"label": "Rata-rata Pendapatan Harian", "value": format_currency(average_income), "tone": "normal"},
         ],
-        "net_profit": "Rp 0",
-        "net_profit_trend": "Belum ada data bulan lalu",
-        "daily_details": [],
-        "daily_totals": {"transactions": "0", "income": "Rp 0", "cost": "Rp 0", "profit": "Rp 0"},
-        "recent_transactions": [],
-        "print_transactions": [],
+        "net_profit": format_currency(totals["profit"]),
+        "net_profit_trend": build_trend_text(totals["profit"], previous_totals["profit"], "Belum ada data periode lalu"),
+        "hourly_sales": fetch_hourly_sales(start_date, end_date),
+        "daily_details": daily_details,
+        "daily_totals": {
+            "transactions": str(totals["transactions"]),
+            "income": format_currency(totals["revenue"]),
+            "cost": format_currency(totals["cost"]),
+            "profit": format_currency(totals["profit"]),
+        },
+        "recent_transactions": recent_transactions,
+        "print_transactions": fetch_recent_transactions(start_date, end_date, limit=20),
+        "monthly_summary": build_monthly_summary(end_date),
+        "daily_income_rows": daily_details[:6],
     }
 
 
@@ -573,6 +982,110 @@ def parse_menu_price(price_value):
     if price < MIN_MENU_PRICE:
         raise ValueError
     return price
+
+
+def parse_staff_date(value):
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    for date_format in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(value, date_format).date().isoformat()
+        except ValueError:
+            continue
+    return ""
+
+
+def format_staff_date(value):
+    value = str(value or "").strip()
+    if not value:
+        return "-"
+    date_part = value[:10]
+    parsed_date = parse_report_date(date_part)
+    if parsed_date:
+        return format_short_date(parsed_date)
+    return value
+
+
+def normalize_staff_status(status, is_active=True):
+    status = str(status or "Aktif").strip().title()
+    if status not in STAFF_STATUSES:
+        status = "Aktif"
+    if not is_active:
+        return "Nonaktif"
+    return status
+
+
+def staff_status_tone(status):
+    status_key = str(status or "").strip().lower()
+    if status_key == "aktif":
+        return "active"
+    if status_key == "cuti":
+        return "leave"
+    return "inactive"
+
+
+def staff_initial(name):
+    name = str(name or "").strip()
+    return name[:1].upper() if name else "S"
+
+
+def format_staff_member(row):
+    data = row_to_dict(row)
+    is_active = int(data.get("is_active", 1) or 0) == 1
+    status = normalize_staff_status(data.get("staff_status"), is_active)
+    joined_date = data.get("joined_date") or data.get("created_at")
+    return {
+        "id": data.get("id"),
+        "full_name": data.get("full_name") or "Staff",
+        "initial": staff_initial(data.get("full_name")),
+        "email": data.get("email") or "-",
+        "phone": data.get("staff_phone") or "-",
+        "phone_value": data.get("staff_phone") or "",
+        "position": data.get("staff_position") or "Staff",
+        "joined_date": format_staff_date(joined_date),
+        "joined_date_value": parse_staff_date(joined_date) or datetime.now().date().isoformat(),
+        "status": status,
+        "status_tone": staff_status_tone(status),
+        "is_active": is_active,
+    }
+
+
+def get_staff_form_data():
+    is_active = request.form.get("is_active", "1") == "1"
+    status = normalize_staff_status(request.form.get("staff_status", "Aktif"), is_active)
+    if status == "Nonaktif":
+        is_active = False
+    return {
+        "full_name": request.form.get("full_name", "").strip(),
+        "email": request.form.get("email", "").strip().lower(),
+        "staff_phone": request.form.get("staff_phone", "").strip(),
+        "staff_position": request.form.get("staff_position", "").strip(),
+        "joined_date": request.form.get("joined_date", "").strip(),
+        "staff_status": status,
+        "is_active": is_active,
+    }
+
+
+def validate_staff_form(form_data, require_email=True):
+    errors = []
+    if not form_data["full_name"]:
+        errors.append("Nama lengkap wajib diisi.")
+    if require_email:
+        if not form_data["email"]:
+            errors.append("Email wajib diisi.")
+        elif "@" not in form_data["email"]:
+            errors.append("Format email tidak valid.")
+    if not form_data["staff_phone"]:
+        errors.append("Nomor telepon wajib diisi.")
+    if not form_data["staff_position"]:
+        errors.append("Peran staff wajib diisi.")
+    joined_date = parse_staff_date(form_data["joined_date"])
+    if not joined_date:
+        errors.append("Tanggal bergabung wajib diisi dengan format tanggal yang valid.")
+    if form_data["staff_status"] not in STAFF_STATUSES:
+        errors.append("Status staff tidak valid.")
+    return errors, joined_date
 
 
 def get_current_shift():
@@ -666,12 +1179,17 @@ def login():
             flash("Email atau password salah. Cek lagi email yang terdaftar dan password saat registrasi.", "error")
             return render_template("login.html", email=email)
 
-        user_role = str(user["role"] or "").strip().lower()
+        user_data = row_to_dict(user)
+        user_role = str(user_data.get("role") or "").strip().lower()
+        if user_role == "staff" and int(user_data.get("is_active", 1) or 0) != 1:
+            flash("Akun staff ini sedang nonaktif. Silakan hubungi owner.", "error")
+            return render_template("login.html", email=email)
+
         session.clear()
-        session["user_id"] = user["id"]
-        session["full_name"] = user["full_name"]
-        session["name"] = user["full_name"]
-        session["username"] = user["full_name"]
+        session["user_id"] = user_data["id"]
+        session["full_name"] = user_data["full_name"]
+        session["name"] = user_data["full_name"]
+        session["username"] = user_data["full_name"]
         session["role"] = user_role
         flash(f"Login sebagai {session['role'].title()} berhasil.", "success")
         return redirect_for_role()
@@ -1115,7 +1633,7 @@ def owner_reports():
         "owner_financial_reports.html",
         owner_name=get_owner_name(),
         active_page="reports",
-        report=build_financial_report(),
+        report=build_financial_report(request.args),
     )
 
 
@@ -1126,18 +1644,190 @@ def owner_reports_print():
         "owner_financial_report_print.html",
         owner_name=get_owner_name(),
         active_page="reports",
-        report=build_financial_report(),
+        report=build_financial_report(request.args),
     )
 
 
 @app.route("/owner/users")
 @owner_required
 def owner_users():
+    init_db()
+    page = request.args.get("page", 1, type=int)
+    per_page = 6
+
+    if page < 1:
+        page = 1
+
+    db = get_db()
+    offset = (page - 1) * per_page
+    total = fetch_scalar(db.execute("SELECT COUNT(*) FROM users WHERE LOWER(role) = ?", ("staff",))) or 0
+    staff_rows = db.execute(
+        """
+        SELECT id, full_name, email, staff_phone, staff_position, joined_date, staff_status, is_active, created_at
+        FROM users
+        WHERE LOWER(role) = ?
+        ORDER BY id ASC
+        LIMIT ? OFFSET ?
+        """,
+        ("staff", per_page, offset),
+    ).fetchall()
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
     return render_template(
-        "dashboard_placeholder.html",
-        full_name=session.get("username", "Owner"),
-        role="Owner",
-        page_title="User Owner",
+        "owner_staff.html",
+        owner_name=get_owner_name(),
+        active_page="staff",
+        staff_members=[format_staff_member(staff) for staff in staff_rows],
+        page=page,
+        total_pages=total_pages,
+        total=total,
+        per_page=per_page,
+    )
+
+
+@app.route("/owner/users/add", methods=["GET", "POST"])
+@owner_required
+def owner_users_add():
+    init_db()
+
+    if request.method == "POST":
+        form_data = get_staff_form_data()
+        errors, joined_date = validate_staff_form(form_data)
+
+        if errors:
+            return render_template(
+                "owner_staff_add.html",
+                owner_name=get_owner_name(),
+                active_page="staff",
+                form_data=form_data,
+                staff_positions=STAFF_POSITIONS,
+                errors=errors,
+            )
+
+        try:
+            execute_commit(
+                """
+                INSERT INTO users (
+                    full_name, email, password_hash, role, staff_phone, staff_position,
+                    joined_date, staff_status, is_active
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    form_data["full_name"],
+                    form_data["email"],
+                    generate_password_hash(STAFF_DEFAULT_PASSWORD),
+                    "staff",
+                    form_data["staff_phone"],
+                    form_data["staff_position"],
+                    joined_date,
+                    "Aktif",
+                    1,
+                ),
+            )
+        except Exception:
+            return render_template(
+                "owner_staff_add.html",
+                owner_name=get_owner_name(),
+                active_page="staff",
+                form_data=form_data,
+                staff_positions=STAFF_POSITIONS,
+                errors=["Email sudah terdaftar. Gunakan email staff yang berbeda."],
+            )
+
+        flash(f"Staff berhasil ditambahkan. Password awal: {STAFF_DEFAULT_PASSWORD}", "success")
+        return redirect(url_for("owner_users"))
+
+    return render_template(
+        "owner_staff_add.html",
+        owner_name=get_owner_name(),
+        active_page="staff",
+        form_data={},
+        staff_positions=STAFF_POSITIONS,
+        errors=[],
+    )
+
+
+@app.route("/owner/users/<int:staff_id>/edit", methods=["GET", "POST"])
+@owner_required
+def owner_users_edit(staff_id):
+    init_db()
+    db = get_db()
+    staff = db.execute(
+        """
+        SELECT id, full_name, email, staff_phone, staff_position, joined_date, staff_status, is_active, created_at
+        FROM users
+        WHERE id = ? AND LOWER(role) = ?
+        """,
+        (staff_id, "staff"),
+    ).fetchone()
+
+    if staff is None:
+        flash("Data staff tidak ditemukan.", "error")
+        return redirect(url_for("owner_users"))
+
+    staff_data = format_staff_member(staff)
+
+    if request.method == "POST":
+        form_data = get_staff_form_data()
+        errors, joined_date = validate_staff_form(form_data)
+
+        if errors:
+            return render_template(
+                "owner_staff_edit.html",
+                owner_name=get_owner_name(),
+                active_page="staff",
+                staff=staff_data,
+                form_data=form_data,
+                staff_positions=STAFF_POSITIONS,
+                staff_statuses=STAFF_STATUSES,
+                errors=errors,
+            )
+
+        try:
+            execute_commit(
+                """
+                UPDATE users
+                SET full_name = ?, email = ?, staff_phone = ?, staff_position = ?,
+                    joined_date = ?, staff_status = ?, is_active = ?
+                WHERE id = ? AND LOWER(role) = ?
+                """,
+                (
+                    form_data["full_name"],
+                    form_data["email"],
+                    form_data["staff_phone"],
+                    form_data["staff_position"],
+                    joined_date,
+                    form_data["staff_status"],
+                    1 if form_data["is_active"] else 0,
+                    staff_id,
+                    "staff",
+                ),
+            )
+        except Exception:
+            return render_template(
+                "owner_staff_edit.html",
+                owner_name=get_owner_name(),
+                active_page="staff",
+                staff=staff_data,
+                form_data=form_data,
+                staff_positions=STAFF_POSITIONS,
+                staff_statuses=STAFF_STATUSES,
+                errors=["Email sudah digunakan akun lain. Gunakan email yang berbeda."],
+            )
+
+        flash("Data staff berhasil diperbarui.", "success")
+        return redirect(url_for("owner_users"))
+
+    return render_template(
+        "owner_staff_edit.html",
+        owner_name=get_owner_name(),
+        active_page="staff",
+        staff=staff_data,
+        form_data={},
+        staff_positions=STAFF_POSITIONS,
+        staff_statuses=STAFF_STATUSES,
+        errors=[],
     )
 
 
@@ -1151,6 +1841,7 @@ def owner_fallback(unused_path):
 @staff_required
 def pos():
     init_menu_table()
+    init_pos_tables()
     db = get_db()
     products = db.execute(
         """
@@ -1187,6 +1878,7 @@ def initialize_database():
     with app.app_context():
         init_db()
         init_menu_table()
+        init_pos_tables()
 
 
 if __name__ == "__main__":

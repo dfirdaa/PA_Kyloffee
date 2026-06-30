@@ -256,6 +256,102 @@
     font-size: 16px;
 }
 
+.owner-content--staff-form {
+    max-width: 980px;
+    margin: 0 auto;
+    padding-top: 22px;
+}
+
+.owner-content--staff-form .page-heading {
+    margin-bottom: 22px;
+}
+
+.owner-content--staff-form .page-heading h1 {
+    margin: 0 0 10px;
+    font-size: 27px;
+    letter-spacing: -0.4px;
+}
+
+.staff-form-card {
+    border-radius: 8px;
+    box-shadow: none;
+}
+
+.staff-form-card--edit {
+    border-color: #4b403b;
+}
+
+.staff-form-body {
+    display: grid;
+    gap: 26px;
+    padding: 50px 48px 64px;
+}
+
+.staff-form-body--edit {
+    gap: 24px;
+    padding: 34px 32px 48px;
+}
+
+.staff-form-card .field-group label {
+    margin-bottom: 10px;
+    color: #514640;
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+}
+
+.staff-form-card .field-group input,
+.staff-form-card .field-group select {
+    height: 42px;
+    border-radius: 0;
+    border-color: #c9beb8;
+    background: #fffdfa;
+}
+
+.staff-form-card--edit .field-group input,
+.staff-form-card--edit .field-group select {
+    border: 0;
+    border-bottom: 1px solid #8b7b72;
+    background: #fbfaf8;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.staff-field-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+}
+
+.staff-form-card hr {
+    width: 100%;
+    height: 1px;
+    margin: 14px 0;
+    border: 0;
+    background: #e4d9d2;
+}
+
+.staff-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+}
+
+.staff-form-actions .submit-button {
+    min-width: 165px;
+    height: 48px;
+    font-family: "Courier New", monospace;
+    font-size: 14px;
+    letter-spacing: 1px;
+}
+
+.staff-status-toggle {
+    margin-top: 6px;
+}
+
 @media (max-width: 1040px) {
     .form-grid {
         grid-template-columns: 1fr;
@@ -280,7 +376,20 @@
         grid-template-columns: 1fr;
     }
 
+    .staff-field-row {
+        grid-template-columns: 1fr;
+    }
+
     .form-card__footer {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+
+    .staff-form-body {
+        padding: 28px 22px 34px;
+    }
+
+    .staff-form-actions {
         align-items: stretch;
         flex-direction: column-reverse;
     }

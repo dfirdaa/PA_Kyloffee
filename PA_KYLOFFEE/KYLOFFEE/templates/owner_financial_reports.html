@@ -13,137 +13,165 @@
 
         <main class="owner-main">
             <header class="owner-topbar owner-topbar--spread">
-                <div class="topbar-actions">
-                    <a href="{{ url_for('owner_menu') }}" class="topbar-button topbar-button--light">&larr; Back</a>
-                    <a href="{{ url_for('owner_reports_print') }}" class="topbar-button topbar-button--dark">&#9635; Cetak PDF</a>
-                    <button type="button" class="topbar-button topbar-button--light" disabled>&#9633; {{ report.calendar_label }}</button>
+                <div class="topbar-actions report-topbar-actions">
+                    <a
+                        href="{{ url_for('owner_reports_print', date_from=report.date_from, date_to=report.date_to) }}"
+                        class="topbar-button topbar-button--dark"
+                    >
+                        &#9635; Cetak PDF
+                    </a>
+                    <form class="period-form" action="{{ url_for('owner_reports') }}" method="get">
+                        <label for="date_from">Periode</label>
+                        <input id="date_from" type="date" name="date_from" value="{{ report.date_from }}">
+                        <span>s/d</span>
+                        <input type="date" name="date_to" value="{{ report.date_to }}">
+                        <button type="submit">Terapkan</button>
+                    </form>
                 </div>
                 <div class="owner-identity">Owner : <strong>{{ owner_name }}</strong></div>
             </header>
 
-            <section class="owner-content report-content">
-                <div class="report-heading-row">
+            <section class="owner-content report-dashboard">
+                <div class="report-heading-row report-heading-row--dashboard">
                     <div>
-                        <p class="breadcrumb">DASBOR ANALITIK &gt; CETAK LAPORAN KEUANGAN</p>
+                        <p class="breadcrumb">DASBOR ANALITIK</p>
                         <h1>Laporan Keuangan</h1>
                     </div>
-                    <span class="period-pill">{{ report.period }}</span>
                 </div>
 
-                <article class="financial-sheet">
-                    <header class="financial-sheet__header">
-                        <div>
-                            <strong>Kyloffee</strong>
-                            <h2>Laporan Keuangan</h2>
-                        </div>
-                        <div class="financial-sheet__meta">
-                            <span>Periode: {{ report.period }}</span>
-                            <span>Tanggal Cetak: {{ report.printed_at }}</span>
-                        </div>
-                    </header>
+                <section class="report-metric-grid" aria-label="Ringkasan laporan keuangan">
+                    {% for item in report.dashboard_metrics %}
+                        <article class="report-metric-card">
+                            <span>{{ item.label }}</span>
+                            <strong>{{ item.value }}</strong>
+                            <small class="metric-trend metric-trend--{{ item.tone }}">{{ item.trend }}</small>
+                        </article>
+                    {% endfor %}
+                </section>
 
-                    <section class="financial-summary">
-                        <div class="summary-list">
-                            <h3>Ringkasan Keuangan</h3>
-                            {% for item in report.print_summary %}
-                                <div class="summary-row summary-row--{{ item.tone }}">
-                                    <span>{{ item.label }}</span>
-                                    <strong>{{ item.value }}</strong>
-                                </div>
-                            {% endfor %}
+                <section class="report-panel sales-chart-panel">
+                    <div class="panel-heading">
+                        <h2>Tren Penjualan (Per Jam)</h2>
+                        <span><i></i> Penjualan Periode Ini</span>
+                    </div>
+
+                    <div class="sales-chart" aria-label="Grafik penjualan per jam">
+                        {% for item in report.hourly_sales %}
+                            <div class="sales-chart__slot">
+                                <div
+                                    class="sales-chart__bar {% if item.is_peak %}sales-chart__bar--peak{% endif %}"
+                                    style="--bar-height: {{ item.height }}%;"
+                                    title="{{ item.hour }} - {{ item.amount }}"
+                                ></div>
+                                <small class="{% if not item.label_visible %}is-muted-label{% endif %}">{{ item.hour }}</small>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    {% if not report.has_data %}
+                        <p class="report-empty-note">Belum ada transaksi untuk periode ini. Data akan muncul otomatis setelah POS mencatat penjualan.</p>
+                    {% endif %}
+                </section>
+
+                <section class="report-panel report-table-panel">
+                    <div class="panel-heading">
+                        <h2>Transaksi Terbaru</h2>
+                        <span>{{ report.period }}</span>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="report-data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID Pesanan</th>
+                                    <th>Waktu</th>
+                                    <th>Item</th>
+                                    <th>Pelanggan</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if report.recent_transactions %}
+                                    {% for trx in report.recent_transactions %}
+                                        <tr>
+                                            <td class="mono">{{ trx.id }}</td>
+                                            <td>{{ trx.time }}</td>
+                                            <td>{{ trx.items }} Item</td>
+                                            <td>{{ trx.customer }}</td>
+                                            <td>{{ trx.total }}</td>
+                                            <td><span class="status-pill">{{ trx.status }}</span></td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="6" class="sheet-empty">Belum ada transaksi.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="report-bottom-grid">
+                    <article class="report-panel">
+                        <div class="panel-heading">
+                            <h2>Ringkasan Per Bulan</h2>
                         </div>
-
-                        <aside class="net-profit-box">
-                            <span>LABA BERSIH (NET PROFIT)</span>
-                            <strong>{{ report.net_profit }}</strong>
-                            <small>{{ report.net_profit_trend }}</small>
-                        </aside>
-                    </section>
-
-                    <section class="sheet-section">
-                        <h3>Detail Pendapatan Harian</h3>
-                        <div class="sheet-table-wrap">
-                            <table class="sheet-table">
+                        <div class="table-responsive">
+                            <table class="mini-report-table">
                                 <thead>
                                     <tr>
-                                        <th>Tanggal</th>
-                                        <th>Jml Transaksi</th>
+                                        <th>Bulan</th>
                                         <th>Pendapatan</th>
-                                        <th>Biaya</th>
-                                        <th>Laba Bersih</th>
+                                        <th>Laba</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% if report.daily_details %}
-                                        {% for item in report.daily_details %}
-                                            <tr>
-                                                <td>{{ item.date }}</td>
-                                                <td>{{ item.transactions }}</td>
-                                                <td>{{ item.income }}</td>
-                                                <td>{{ item.cost }}</td>
-                                                <td><strong>{{ item.profit }}</strong></td>
-                                            </tr>
-                                        {% endfor %}
-                                        <tr class="sheet-total-row">
-                                            <td>Total</td>
-                                            <td>{{ report.daily_totals.transactions }}</td>
-                                            <td>{{ report.daily_totals.income }}</td>
-                                            <td>{{ report.daily_totals.cost }}</td>
-                                            <td>{{ report.daily_totals.profit }}</td>
+                                    {% for row in report.monthly_summary %}
+                                        <tr class="{% if row.is_current %}is-current-row{% endif %}">
+                                            <td>{{ row.month }}</td>
+                                            <td>{{ row.income }}</td>
+                                            <td>{{ row.profit }}</td>
                                         </tr>
-                                    {% else %}
-                                        <tr>
-                                            <td colspan="5" class="sheet-empty">Belum ada pendapatan harian.</td>
-                                        </tr>
-                                    {% endif %}
+                                    {% endfor %}
                                 </tbody>
                             </table>
                         </div>
-                    </section>
+                    </article>
 
-                    <section class="sheet-section">
-                        <h3>Transaksi Terbaru</h3>
-                        <div class="sheet-table-wrap">
-                            <table class="sheet-table">
+                    <article class="report-panel">
+                        <div class="panel-heading">
+                            <h2>Pendapatan Per Hari</h2>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="mini-report-table">
                                 <thead>
                                     <tr>
-                                        <th>Order ID</th>
                                         <th>Tanggal</th>
-                                        <th>Waktu</th>
-                                        <th>Pelanggan</th>
-                                        <th>Metode Bayar</th>
-                                        <th>Total</th>
-                                        <th>Status</th>
+                                        <th>Trx</th>
+                                        <th>Pendapatan</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% if report.print_transactions %}
-                                        {% for trx in report.print_transactions %}
+                                    {% if report.daily_income_rows %}
+                                        {% for row in report.daily_income_rows %}
                                             <tr>
-                                                <td>{{ trx.id }}</td>
-                                                <td>{{ trx.date }}</td>
-                                                <td>{{ trx.time }}</td>
-                                                <td>{{ trx.customer }}</td>
-                                                <td>{{ trx.method }}</td>
-                                                <td>{{ trx.total }}</td>
-                                                <td>{{ trx.status }}</td>
+                                                <td>{{ row.date }}</td>
+                                                <td>{{ row.transactions }}</td>
+                                                <td>{{ row.income }}</td>
                                             </tr>
                                         {% endfor %}
                                     {% else %}
                                         <tr>
-                                            <td colspan="7" class="sheet-empty">Belum ada transaksi.</td>
+                                            <td colspan="3" class="sheet-empty">Belum ada pendapatan harian.</td>
                                         </tr>
                                     {% endif %}
                                 </tbody>
                             </table>
                         </div>
-                    </section>
-
-                    <footer class="financial-sheet__footer">
-                        <span>Dicetak otomatis dari sistem Kyloffee</span>
-                        <span>Halaman 1 dari 1</span>
-                    </footer>
-                </article>
+                    </article>
+                </section>
             </section>
         </main>
     </div>
