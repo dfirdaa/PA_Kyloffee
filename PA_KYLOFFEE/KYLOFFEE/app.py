@@ -4,7 +4,7 @@ import sqlite3
 import uuid
 from functools import wraps
 from pathlib import Path
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
 from flask import (
@@ -262,6 +262,14 @@ def fetch_all_dict(cursor):
     return [dict(zip(columns, row)) for row in rows]
 
 
+def row_to_dict(row):
+    if row is None:
+        return {}
+    if isinstance(row, dict):
+        return row
+    return dict(row)
+
+
 @app.teardown_appcontext
 def close_db(exception=None):
     db = g.pop("db", None)
@@ -412,6 +420,80 @@ def init_menu_table():
         )
 
 
+def init_pos_tables():
+    db = get_db()
+
+    if db.is_mysql:
+        execute_script_commit(
+            """
+            CREATE TABLE IF NOT EXISTS pos_transactions (
+                id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                order_code VARCHAR(60) NOT NULL UNIQUE,
+                transaction_date DATE NOT NULL,
+                transaction_time TIME NOT NULL,
+                customer_name VARCHAR(255) DEFAULT 'Walk-in Customer',
+                payment_method VARCHAR(80) DEFAULT 'Tunai',
+                subtotal_amount BIGINT NOT NULL DEFAULT 0,
+                discount_amount BIGINT NOT NULL DEFAULT 0,
+                tax_amount BIGINT NOT NULL DEFAULT 0,
+                operational_cost BIGINT NOT NULL DEFAULT 0,
+                total_amount BIGINT NOT NULL DEFAULT 0,
+                item_count INT NOT NULL DEFAULT 0,
+                status VARCHAR(40) NOT NULL DEFAULT 'Selesai',
+                staff_id BIGINT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        execute_script_commit(
+            """
+            CREATE TABLE IF NOT EXISTS pos_transaction_items (
+                id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                transaction_id BIGINT NOT NULL,
+                menu_id BIGINT NULL,
+                menu_name VARCHAR(255) NOT NULL,
+                quantity INT NOT NULL DEFAULT 1,
+                unit_price BIGINT NOT NULL DEFAULT 0,
+                subtotal BIGINT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    else:
+        execute_script_commit(
+            """
+            CREATE TABLE IF NOT EXISTS pos_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_code TEXT NOT NULL UNIQUE,
+                transaction_date TEXT NOT NULL,
+                transaction_time TEXT NOT NULL,
+                customer_name TEXT DEFAULT 'Walk-in Customer',
+                payment_method TEXT DEFAULT 'Tunai',
+                subtotal_amount INTEGER NOT NULL DEFAULT 0,
+                discount_amount INTEGER NOT NULL DEFAULT 0,
+                tax_amount INTEGER NOT NULL DEFAULT 0,
+                operational_cost INTEGER NOT NULL DEFAULT 0,
+                total_amount INTEGER NOT NULL DEFAULT 0,
+                item_count INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'Selesai',
+                staff_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS pos_transaction_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transaction_id INTEGER NOT NULL,
+                menu_id INTEGER,
+                menu_name TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 1,
+                unit_price INTEGER NOT NULL DEFAULT 0,
+                subtotal INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+
+
 def get_owner_name():
     return (
         session.get("full_name")
@@ -521,50 +603,338 @@ def get_ordered_menu_categories(categories):
 
 
 def format_report_datetime(value):
+    return f"{format_short_date(value.date())} {value:%H:%M} WIB"
+
+
+def format_currency(amount):
+    return f"Rp {int(amount or 0):,}".replace(",", ".")
+
+
+def format_short_date(value):
+    month_names = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+    return f"{value.day} {month_names[value.month - 1]} {value.year}"
+
+
+def format_month_name(value):
     month_names = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
+        "Januari",
+        "Februari",
+        "Maret",
+        "April",
         "Mei",
-        "Jun",
-        "Jul",
-        "Agu",
-        "Sep",
-        "Okt",
-        "Nov",
-        "Des",
+        "Juni",
+        "Juli",
+        "Agustus",
+        "September",
+        "Oktober",
+        "November",
+        "Desember",
     ]
-    return f"{value.day} {month_names[value.month - 1]} {value.year} {value:%H:%M} WIB"
+    return f"{month_names[value.month - 1]} {value.year}"
 
 
-def build_financial_report():
-    now = datetime.now()
+def format_report_period(start_date, end_date):
+    if start_date == end_date:
+        return format_short_date(start_date)
+    if start_date.month == end_date.month and start_date.year == end_date.year:
+        month_names = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+        return f"{start_date.day} - {end_date.day} {month_names[start_date.month - 1]} {start_date.year}"
+    return f"{format_short_date(start_date)} - {format_short_date(end_date)}"
+
+
+def parse_report_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def resolve_report_period(args):
+    today = datetime.now().date()
+    default_start = today.replace(day=1)
+    start_date = parse_report_date(args.get("date_from")) or default_start
+    end_date = parse_report_date(args.get("date_to")) or today
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+    return start_date, end_date
+
+
+def shift_month(source_date, month_delta):
+    month_index = source_date.month - 1 + month_delta
+    year = source_date.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
+
+
+def get_period_totals(start_date, end_date):
+    db = get_db()
+    row = row_to_dict(
+        db.execute(
+            """
+            SELECT
+                COALESCE(SUM(total_amount), 0) AS revenue,
+                COALESCE(SUM(operational_cost), 0) AS cost,
+                COUNT(*) AS transactions
+            FROM pos_transactions
+            WHERE transaction_date BETWEEN ? AND ?
+              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        ).fetchone()
+    )
+    revenue = int(row.get("revenue") or 0)
+    cost = int(row.get("cost") or 0)
+    transactions = int(row.get("transactions") or 0)
     return {
-        "period": "Belum ada transaksi",
-        "calendar_label": "Pilih periode",
+        "revenue": revenue,
+        "cost": cost,
+        "profit": revenue - cost,
+        "transactions": transactions,
+    }
+
+
+def build_trend_text(current_value, previous_value, empty_text="Belum ada transaksi"):
+    current_value = int(current_value or 0)
+    previous_value = int(previous_value or 0)
+    if previous_value == 0:
+        return empty_text if current_value == 0 else "Baru ada transaksi"
+    percentage = ((current_value - previous_value) / previous_value) * 100
+    sign = "+" if percentage >= 0 else "-"
+    return f"{sign}{abs(percentage):.1f}% dari periode lalu"
+
+
+def trend_tone(current_value, previous_value):
+    current_value = int(current_value or 0)
+    previous_value = int(previous_value or 0)
+    if previous_value == 0 or current_value == previous_value:
+        return "neutral"
+    return "positive" if current_value > previous_value else "negative"
+
+
+def fetch_daily_details(start_date, end_date):
+    db = get_db()
+    rows = fetch_all_dict(
+        db.execute(
+            """
+            SELECT
+                transaction_date,
+                COUNT(*) AS transactions,
+                COALESCE(SUM(total_amount), 0) AS income,
+                COALESCE(SUM(operational_cost), 0) AS cost
+            FROM pos_transactions
+            WHERE transaction_date BETWEEN ? AND ?
+              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
+            GROUP BY transaction_date
+            ORDER BY transaction_date DESC
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+    )
+
+    details = []
+    for row in rows:
+        income = int(row.get("income") or 0)
+        cost = int(row.get("cost") or 0)
+        detail_date = parse_report_date(str(row.get("transaction_date")))
+        details.append(
+            {
+                "date": format_short_date(detail_date) if detail_date else row.get("transaction_date"),
+                "transactions": int(row.get("transactions") or 0),
+                "income": format_currency(income),
+                "cost": format_currency(cost),
+                "profit": format_currency(income - cost),
+            }
+        )
+    return details
+
+
+def fetch_recent_transactions(start_date, end_date, limit=5):
+    db = get_db()
+    rows = fetch_all_dict(
+        db.execute(
+            """
+            SELECT
+                order_code,
+                transaction_date,
+                transaction_time,
+                customer_name,
+                payment_method,
+                total_amount,
+                item_count,
+                status
+            FROM pos_transactions
+            WHERE transaction_date BETWEEN ? AND ?
+              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
+            ORDER BY transaction_date DESC, transaction_time DESC, id DESC
+            LIMIT ?
+            """,
+            (start_date.isoformat(), end_date.isoformat(), limit),
+        )
+    )
+
+    transactions = []
+    for row in rows:
+        transaction_date = parse_report_date(str(row.get("transaction_date")))
+        transaction_time = str(row.get("transaction_time") or "")[:5]
+        transactions.append(
+            {
+                "id": row.get("order_code") or "-",
+                "date": format_short_date(transaction_date) if transaction_date else row.get("transaction_date"),
+                "time": transaction_time or "-",
+                "customer": row.get("customer_name") or "Walk-in Customer",
+                "method": row.get("payment_method") or "Tunai",
+                "total": format_currency(row.get("total_amount") or 0),
+                "items": int(row.get("item_count") or 0),
+                "status": str(row.get("status") or "Selesai").title(),
+            }
+        )
+    return transactions
+
+
+def fetch_hourly_sales(start_date, end_date):
+    db = get_db()
+    rows = fetch_all_dict(
+        db.execute(
+            """
+            SELECT transaction_time, total_amount
+            FROM pos_transactions
+            WHERE transaction_date BETWEEN ? AND ?
+              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        )
+    )
+
+    hourly_values = {hour: 0 for hour in range(8, 23)}
+    for row in rows:
+        try:
+            hour = int(str(row.get("transaction_time") or "")[:2])
+        except ValueError:
+            continue
+        if hour in hourly_values:
+            hourly_values[hour] += int(row.get("total_amount") or 0)
+
+    max_value = max(hourly_values.values()) if hourly_values else 0
+    chart = []
+    for hour, amount in hourly_values.items():
+        height = int((amount / max_value) * 100) if max_value else 0
+        chart.append(
+            {
+                "hour": f"{hour:02d}:00",
+                "amount": format_currency(amount),
+                "height": height,
+                "has_value": amount > 0,
+                "is_peak": max_value > 0 and amount == max_value,
+                "label_visible": hour % 2 == 0,
+            }
+        )
+    return chart
+
+
+def build_monthly_summary(end_date):
+    current_month = end_date.replace(day=1)
+    rows = []
+    for month_delta in (-2, -1, 0):
+        month_start = shift_month(current_month, month_delta)
+        month_end = shift_month(month_start, 1) - timedelta(days=1)
+        totals = get_period_totals(month_start, month_end)
+        rows.append(
+            {
+                "month": format_month_name(month_start),
+                "income": format_currency(totals["revenue"]),
+                "profit": format_currency(totals["profit"]),
+                "is_current": month_delta == 0,
+            }
+        )
+    return rows
+
+
+def build_financial_report(args=None):
+    init_pos_tables()
+    args = args or request.args
+    start_date, end_date = resolve_report_period(args)
+    now = datetime.now()
+    totals = get_period_totals(start_date, end_date)
+    day_count = max((end_date - start_date).days + 1, 1)
+    previous_end = start_date - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=day_count - 1)
+    previous_totals = get_period_totals(previous_start, previous_end)
+
+    today = now.date()
+    today_totals = get_period_totals(today, today)
+    average_income = totals["revenue"] // day_count
+    previous_average = previous_totals["revenue"] // day_count if day_count else 0
+    period_label = format_report_period(start_date, end_date)
+    daily_details = fetch_daily_details(start_date, end_date)
+    recent_transactions = fetch_recent_transactions(start_date, end_date, limit=5)
+
+    return {
+        "period": period_label,
+        "calendar_label": period_label,
         "printed_at": format_report_datetime(now),
-        "has_data": False,
+        "date_from": start_date.isoformat(),
+        "date_to": end_date.isoformat(),
+        "has_data": totals["transactions"] > 0,
         "dashboard_metrics": [
-            {"label": "Total Pendapatan", "value": "Rp 0", "trend": "Belum ada transaksi", "tone": "neutral"},
-            {"label": "Total Biaya Operasional", "value": "Rp 0", "trend": "", "tone": "neutral"},
-            {"label": "Laba Bersih", "value": "Rp 0", "trend": "", "tone": "neutral"},
-            {"label": "Total Transaksi", "value": "0", "trend": "", "tone": "neutral"},
-            {"label": "Pendapatan Hari Ini", "value": "Rp 0", "trend": "", "tone": "neutral"},
-            {"label": "Rata-rata Pendapatan Harian", "value": "Rp 0", "trend": "", "tone": "neutral"},
+            {
+                "label": "Total Pendapatan",
+                "value": format_currency(totals["revenue"]),
+                "trend": build_trend_text(totals["revenue"], previous_totals["revenue"]),
+                "tone": trend_tone(totals["revenue"], previous_totals["revenue"]),
+            },
+            {
+                "label": "Total Biaya Operasional",
+                "value": format_currency(totals["cost"]),
+                "trend": build_trend_text(totals["cost"], previous_totals["cost"], "Belum ada biaya"),
+                "tone": trend_tone(previous_totals["cost"], totals["cost"]),
+            },
+            {
+                "label": "Laba Bersih",
+                "value": format_currency(totals["profit"]),
+                "trend": build_trend_text(totals["profit"], previous_totals["profit"], "Belum ada transaksi"),
+                "tone": trend_tone(totals["profit"], previous_totals["profit"]),
+            },
+            {
+                "label": "Total Transaksi",
+                "value": str(totals["transactions"]),
+                "trend": build_trend_text(totals["transactions"], previous_totals["transactions"]),
+                "tone": trend_tone(totals["transactions"], previous_totals["transactions"]),
+            },
+            {
+                "label": "Pendapatan Hari Ini",
+                "value": format_currency(today_totals["revenue"]),
+                "trend": "Dari transaksi tanggal ini",
+                "tone": "neutral",
+            },
+            {
+                "label": "Rata-rata Pendapatan Harian",
+                "value": format_currency(average_income),
+                "trend": build_trend_text(average_income, previous_average),
+                "tone": trend_tone(average_income, previous_average),
+            },
         ],
         "print_summary": [
-            {"label": "Total Pendapatan (Revenue)", "value": "Rp 0", "tone": "normal"},
-            {"label": "Total Biaya Operasional", "value": "Rp 0", "tone": "danger"},
-            {"label": "Total Transaksi", "value": "0", "tone": "normal"},
-            {"label": "Rata-rata Pendapatan Harian", "value": "Rp 0", "tone": "normal"},
+            {"label": "Total Pendapatan (Revenue)", "value": format_currency(totals["revenue"]), "tone": "normal"},
+            {"label": "Total Biaya Operasional", "value": format_currency(totals["cost"]), "tone": "danger"},
+            {"label": "Total Transaksi", "value": str(totals["transactions"]), "tone": "normal"},
+            {"label": "Rata-rata Pendapatan Harian", "value": format_currency(average_income), "tone": "normal"},
         ],
-        "net_profit": "Rp 0",
-        "net_profit_trend": "Belum ada data bulan lalu",
-        "daily_details": [],
-        "daily_totals": {"transactions": "0", "income": "Rp 0", "cost": "Rp 0", "profit": "Rp 0"},
-        "recent_transactions": [],
-        "print_transactions": [],
+        "net_profit": format_currency(totals["profit"]),
+        "net_profit_trend": build_trend_text(totals["profit"], previous_totals["profit"], "Belum ada data periode lalu"),
+        "hourly_sales": fetch_hourly_sales(start_date, end_date),
+        "daily_details": daily_details,
+        "daily_totals": {
+            "transactions": str(totals["transactions"]),
+            "income": format_currency(totals["revenue"]),
+            "cost": format_currency(totals["cost"]),
+            "profit": format_currency(totals["profit"]),
+        },
+        "recent_transactions": recent_transactions,
+        "print_transactions": fetch_recent_transactions(start_date, end_date, limit=20),
+        "monthly_summary": build_monthly_summary(end_date),
+        "daily_income_rows": daily_details[:6],
     }
 
 
@@ -1115,7 +1485,7 @@ def owner_reports():
         "owner_financial_reports.html",
         owner_name=get_owner_name(),
         active_page="reports",
-        report=build_financial_report(),
+        report=build_financial_report(request.args),
     )
 
 
@@ -1126,7 +1496,7 @@ def owner_reports_print():
         "owner_financial_report_print.html",
         owner_name=get_owner_name(),
         active_page="reports",
-        report=build_financial_report(),
+        report=build_financial_report(request.args),
     )
 
 
@@ -1151,6 +1521,7 @@ def owner_fallback(unused_path):
 @staff_required
 def pos():
     init_menu_table()
+    init_pos_tables()
     db = get_db()
     products = db.execute(
         """
@@ -1187,6 +1558,7 @@ def initialize_database():
     with app.app_context():
         init_db()
         init_menu_table()
+        init_pos_tables()
 
 
 if __name__ == "__main__":

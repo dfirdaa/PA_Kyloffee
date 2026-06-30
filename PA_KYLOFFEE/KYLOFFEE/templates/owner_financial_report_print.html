@@ -14,7 +14,12 @@
         <main class="owner-main">
             <header class="owner-topbar owner-topbar--spread no-print">
                 <div class="topbar-actions">
-                    <a href="{{ url_for('owner_reports') }}" class="topbar-button topbar-button--light">&larr; Back</a>
+                    <a
+                        href="{{ url_for('owner_reports', date_from=report.date_from, date_to=report.date_to) }}"
+                        class="topbar-button topbar-button--light"
+                    >
+                        &larr; Back
+                    </a>
                     <button type="button" onclick="window.print()" class="topbar-button topbar-button--dark">&#9635; Cetak PDF</button>
                     <button type="button" class="topbar-button topbar-button--light" disabled>&#9633; {{ report.calendar_label }}</button>
                 </div>
