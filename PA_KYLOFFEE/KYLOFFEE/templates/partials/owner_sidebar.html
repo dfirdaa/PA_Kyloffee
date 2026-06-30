@@ -1,28 +1,28 @@
 <aside class="owner-sidebar">
     <a href="{{ url_for('owner_menu') }}" class="brand" aria-label="Kyloffee Owner Home">
         <span class="brand-name">Kyloffee</span>
-        <span class="brand-icon">☕</span>
+        <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="" class="brand-logo-mark">
     </a>
 
     <nav class="owner-nav" aria-label="Owner navigation">
         <a href="{{ url_for('owner_menu') }}" class="owner-nav__link {% if active_page == 'menu' %}active{% endif %}">
-            <span class="owner-nav__icon">✂</span>
+            <span class="owner-nav__icon" aria-hidden="true">&#10005;</span>
             <span>Menu Management</span>
         </a>
 
         <a href="{{ url_for('owner_reports') }}" class="owner-nav__link {% if active_page == 'reports' %}active{% endif %}">
-            <span class="owner-nav__icon">▣</span>
+            <span class="owner-nav__icon" aria-hidden="true">&#9635;</span>
             <span>Financial Reports</span>
         </a>
 
         <a href="{{ url_for('owner_users') }}" class="owner-nav__link {% if active_page == 'staff' %}active{% endif %}">
-            <span class="owner-nav__icon">♙</span>
+            <span class="owner-nav__icon" aria-hidden="true">&#9817;</span>
             <span>Staff Management</span>
         </a>
     </nav>
 
     <a href="{{ url_for('logout') }}" class="owner-logout">
-        <span>↪</span>
+        <span aria-hidden="true">&#8617;</span>
         <span>Log Out</span>
     </a>
 </aside>

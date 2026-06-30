@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Management - Kyloffee</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu.css') }}">
+</head>
+<body>
+    <div class="owner-page">
+        {% include 'partials/owner_sidebar.html' %}
+
+        <main class="owner-main">
+            <header class="owner-topbar">
+                <div class="owner-identity">Owner : <strong>{{ owner_name }}</strong></div>
+            </header>
+
+            <section class="owner-content owner-content--staff">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="flash-stack">
+                            {% for category, message in messages %}
+                                <div class="flash flash--{{ category }}">{{ message }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                <div class="page-heading page-heading--row staff-heading">
+                    <div>
+                        <h1>Manajemen Staf</h1>
+                        <p class="page-subtitle">Kelola data karyawan dan hak akses mereka.</p>
+                    </div>
+
+                    <a href="{{ url_for('owner_users_add') }}" class="primary-button staff-add-button">
+                        <span>+</span>
+                        Add New Staff
+                    </a>
+                </div>
+
+                <section class="menu-table-card staff-table-card" aria-label="Daftar staf Kyloffee">
+                    <div class="table-responsive">
+                        <table class="menu-table staff-table">
+                            <thead>
+                                <tr>
+                                    <th>Nama Staf</th>
+                                    <th>Peran</th>
+                                    <th>Email/Telepon</th>
+                                    <th>Tanggal Bergabung</th>
+                                    <th>Status</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if staff_members %}
+                                    {% for staff in staff_members %}
+                                        <tr>
+                                            <td>
+                                                <div class="staff-name-cell">
+                                                    <span class="staff-avatar">{{ staff.initial }}</span>
+                                                    <strong>{{ staff.full_name }}</strong>
+                                                </div>
+                                            </td>
+                                            <td><span class="staff-role-pill">{{ staff.position }}</span></td>
+                                            <td>
+                                                <div class="staff-contact">
+                                                    <span>{{ staff.email }}</span>
+                                                    <small>{{ staff.phone }}</small>
+                                                </div>
+                                            </td>
+                                            <td>{{ staff.joined_date }}</td>
+                                            <td>
+                                                <span class="staff-status staff-status--{{ staff.status_tone }}">
+                                                    <i></i>{{ staff.status }}
+                                                </span>
+                                            </td>
+                                            <td class="action-cell">
+                                                <a href="{{ url_for('owner_users_edit', staff_id=staff.id) }}" class="icon-button" title="Edit staf">&#9998;</a>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="6" class="empty-state">
+                                            <div class="empty-state__icon">
+                                                <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
+                                            </div>
+                                            <strong>Belum ada staff.</strong>
+                                            <p>Tambahkan staff baru agar akun POS bisa dikelola dari owner.</p>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% set start_item = ((page - 1) * per_page) + 1 if total > 0 else 0 %}
+                    {% set end_item = page * per_page if page * per_page < total else total %}
+
+                    <footer class="table-footer">
+                        <p>Menampilkan {{ start_item }}-{{ end_item }} dari {{ total }} staf</p>
+                        <div class="pagination">
+                            <a class="page-button {% if page <= 1 %}disabled{% endif %}" href="{{ url_for('owner_users', page=page-1) if page > 1 else '#' }}">&lsaquo;</a>
+                            <a class="page-button {% if page >= total_pages %}disabled{% endif %}" href="{{ url_for('owner_users', page=page+1) if page < total_pages else '#' }}">&rsaquo;</a>
+                        </div>
+                    </footer>
+                </section>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

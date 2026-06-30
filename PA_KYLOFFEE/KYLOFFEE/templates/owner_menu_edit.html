@@ -17,6 +17,7 @@
             </header>
 
             <section class="owner-content owner-content--form">
+                <a href="{{ url_for('owner_menu') }}" class="back-link">&larr; Back</a>
                 <div class="page-heading">
                     <p class="breadcrumb">Manajemen Menu &gt; Daftar Menu &gt; Update Menu</p>
                     <h1>Update Menu</h1>
@@ -53,7 +54,7 @@
                                     <input type="file" name="image" id="imageInput" accept="image/png,image/jpeg,image/jpg,image/webp">
                                     <img src="{{ menu_image_url(current_image) if current_image else '' }}" alt="Preview foto produk" class="upload-preview" data-upload-preview {% if not current_image %}hidden{% endif %}>
                                     <span class="upload-placeholder" data-upload-placeholder {% if current_image %}hidden{% endif %}>
-                                        <span class="upload-icon">▣</span>
+                                        <span class="upload-icon">&#9635;</span>
                                         <strong>Click to upload image</strong>
                                         <small>or drag and drop here</small>
                                         <em>PNG, JPG, WEBP up to 5MB</em>
@@ -111,7 +112,7 @@
 
                         <div class="form-card__footer">
                             <a href="{{ url_for('owner_menu') }}" class="secondary-button">Batal</a>
-                            <button type="submit" class="submit-button">▣ Simpan Perubahan</button>
+                            <button type="submit" class="submit-button">Simpan Perubahan</button>
                         </div>
                     </div>
                 </form>

@@ -30,7 +30,7 @@ a { color: inherit; }
 
 .opening-page {
     align-items: flex-start;
-    padding: 268px 24px 70px;
+    padding: clamp(150px, 26vh, 268px) 24px 70px;
     color: var(--white);
 }
 
@@ -48,7 +48,7 @@ a { color: inherit; }
 }
 
 .opening-copy p {
-    margin: 11px 0 139px;
+    margin: 11px 0 clamp(88px, 13.6vh, 139px);
     color: var(--white);
     font-size: 26px;
     line-height: 1.12;
@@ -346,6 +346,11 @@ input[type="password"]::-ms-clear { display: none; }
 .auth-button--link { width: auto; padding: 0 46px; margin: 20px auto 12px; font-size: 21px; }
 .auth-switch { text-align: center; color: var(--muted); margin: 22px 0 0; }
 .auth-switch a { font-weight: 800; color: var(--brown); text-decoration: none; }
+.auth-switch--register {
+    margin-top: 24px;
+    color: #5c504b;
+    font-size: 16px;
+}
 .secondary-link { display: inline-block; margin-top: 12px; color: var(--muted); text-decoration: none; }
 
 .message-stack { display: grid; gap: 10px; margin-bottom: 20px; }
@@ -435,7 +440,7 @@ input[type="password"]::-ms-clear { display: none; }
 @media print { .no-print { display:none; } .print-page { padding:0; background:white; } }
 
 @media (max-width: 760px) {
-    .opening-page { padding: 92px 18px 48px; }
+    .opening-page { padding: 82px 18px 48px; }
     .opening-copy h1 { font-size: 42px; }
     .opening-copy p {
         margin: 10px 0 64px;

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perbarui Staff - Kyloffee</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu_form.css') }}">
+</head>
+<body>
+    <div class="owner-page">
+        {% include 'partials/owner_sidebar.html' %}
+
+        <main class="owner-main">
+            <header class="owner-topbar">
+                <div class="owner-identity">Owner : <strong>{{ owner_name }}</strong></div>
+            </header>
+
+            <section class="owner-content owner-content--form owner-content--staff-form">
+                <div class="page-heading">
+                    <p class="breadcrumb">Manajemen Staff &gt; Perbarui Data Staf</p>
+                    <h1>Perbarui Data Staf</h1>
+                    <p class="page-subtitle">Edit informasi administratif untuk staf yang dipilih.</p>
+                </div>
+
+                {% if errors %}
+                    <div class="alert alert--error">
+                        {% for error in errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                {% set current_name = form_data.get('full_name') if form_data else staff.full_name %}
+                {% set current_email = form_data.get('email') if form_data else staff.email %}
+                {% set current_phone = form_data.get('staff_phone') if form_data else staff.phone_value %}
+                {% set current_position = form_data.get('staff_position') if form_data else staff.position %}
+                {% set current_joined = form_data.get('joined_date') if form_data else staff.joined_date_value %}
+                {% set current_status = form_data.get('staff_status') if form_data else staff.status %}
+                {% set current_active = form_data.get('is_active') if form_data else staff.is_active %}
+
+                <form action="{{ url_for('owner_users_edit', staff_id=staff.id) }}" method="POST" class="staff-form">
+                    <div class="form-card staff-form-card staff-form-card--edit">
+                        <div class="staff-form-body staff-form-body--edit">
+                            <div class="staff-field-row">
+                                <div class="field-group">
+                                    <label for="full_name">Nama Lengkap</label>
+                                    <input type="text" id="full_name" name="full_name" value="{{ current_name }}" required>
+                                </div>
+                                <div class="field-group">
+                                    <label for="email">Email</label>
+                                    <input type="email" id="email" name="email" value="{{ current_email }}" required>
+                                </div>
+                            </div>
+
+                            <div class="staff-field-row">
+                                <div class="field-group">
+                                    <label for="staff_phone">Nomor Telepon</label>
+                                    <input type="tel" id="staff_phone" name="staff_phone" value="{{ current_phone }}" required>
+                                </div>
+                                <div class="field-group">
+                                    <label for="staff_position">Peran</label>
+                                    <select id="staff_position" name="staff_position" required>
+                                        {% for position in staff_positions %}
+                                            <option value="{{ position }}" {% if current_position == position %}selected{% endif %}>{{ position }}</option>
+                                        {% endfor %}
+                                        {% if current_position and current_position not in staff_positions %}
+                                            <option value="{{ current_position }}" selected>{{ current_position }}</option>
+                                        {% endif %}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="staff-field-row">
+                                <div class="field-group">
+                                    <label for="joined_date">Tanggal Bergabung</label>
+                                    <input type="date" id="joined_date" name="joined_date" value="{{ current_joined }}" required>
+                                </div>
+                                <div class="field-group">
+                                    <label for="staff_status">Status</label>
+                                    <select id="staff_status" name="staff_status" required>
+                                        {% for status in staff_statuses %}
+                                            <option value="{{ status }}" {% if current_status == status %}selected{% endif %}>{{ status }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="status-field staff-status-toggle">
+                                <input type="hidden" name="is_active" id="isActiveValue" value="{{ '1' if current_active else '0' }}">
+                                <button type="button" class="toggle-switch {% if current_active %}is-on{% endif %}" id="statusToggle" aria-pressed="{{ 'true' if current_active else 'false' }}">
+                                    <span></span>
+                                </button>
+                                <span>Akun Aktif</span>
+                            </div>
+
+                            <hr>
+
+                            <div class="staff-form-actions">
+                                <a href="{{ url_for('owner_users') }}" class="secondary-button">Batal</a>
+                                <button type="submit" class="submit-button">Simpan Perubahan</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/owner_menu_form.js') }}"></script>
+</body>
+</html>
