@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tambah Staff - Kyloffee</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu_form.css') }}">
+</head>
+<body>
+    <div class="owner-page">
+        {% include 'partials/owner_sidebar.html' %}
+
+        <main class="owner-main">
+            <header class="owner-topbar">
+                <div class="owner-identity">Owner : <strong>{{ owner_name }}</strong></div>
+            </header>
+
+            <section class="owner-content owner-content--form owner-content--staff-form">
+                <div class="page-heading">
+                    <p class="breadcrumb">Manajemen Staff &gt; Tambah Staff Baru</p>
+                    <h1>Manajemen Staff</h1>
+                    <p class="page-subtitle">Kelola data karyawan dan hak akses mereka.</p>
+                </div>
+
+                {% if errors %}
+                    <div class="alert alert--error">
+                        {% for error in errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <form action="{{ url_for('owner_users_add') }}" method="POST" class="staff-form">
+                    <div class="form-card staff-form-card staff-form-card--add">
+                        <div class="staff-form-body">
+                            <div class="field-group field-group--full">
+                                <label for="full_name">Nama Lengkap</label>
+                                <input type="text" id="full_name" name="full_name" value="{{ form_data.get('full_name', '') }}" placeholder="cth. Budi Santoso" required>
+                            </div>
+
+                            <div class="staff-field-row">
+                                <div class="field-group">
+                                    <label for="email">Email</label>
+                                    <input type="email" id="email" name="email" value="{{ form_data.get('email', '') }}" placeholder="budi@kyloffee.com" required>
+                                </div>
+                                <div class="field-group">
+                                    <label for="staff_phone">Nomor Telepon</label>
+                                    <input type="tel" id="staff_phone" name="staff_phone" value="{{ form_data.get('staff_phone', '') }}" placeholder="+62 812 3456 7890" required>
+                                </div>
+                            </div>
+
+                            <hr>
+
+                            <div class="staff-field-row">
+                                <div class="field-group">
+                                    <label for="staff_position">Peran</label>
+                                    <input type="text" id="staff_position" name="staff_position" value="{{ form_data.get('staff_position', '') }}" list="staff_positions" placeholder="CTH : Kasir" required>
+                                    <datalist id="staff_positions">
+                                        {% for position in staff_positions %}
+                                            <option value="{{ position }}">
+                                        {% endfor %}
+                                    </datalist>
+                                </div>
+                                <div class="field-group">
+                                    <label for="joined_date">Tanggal Bergabung</label>
+                                    <input type="date" id="joined_date" name="joined_date" value="{{ form_data.get('joined_date', '') }}" required>
+                                </div>
+                            </div>
+
+                            <hr>
+
+                            <div class="staff-form-actions">
+                                <a href="{{ url_for('owner_users') }}" class="secondary-button">Batal</a>
+                                <button type="submit" class="submit-button">Simpan Data</button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

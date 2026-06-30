@@ -130,6 +130,7 @@ class DatabaseConnection:
         return getattr(self.conn, name)
 
 STAFF_INVITATION_CODE = "KYLOFFEE-STAFF"
+STAFF_DEFAULT_PASSWORD = os.getenv("STAFF_DEFAULT_PASSWORD", "kyloffee123")
 MIN_MENU_PRICE = 500
 MENU_CATEGORIES = [
     "Black Series",
@@ -140,6 +141,8 @@ MENU_CATEGORIES = [
     "Mocktail Series",
     "Food",
 ]
+STAFF_POSITIONS = ["Kasir", "Barista", "Admin", "Supervisor"]
+STAFF_STATUSES = ["Aktif", "Cuti", "Nonaktif"]
 
 app = Flask(
     __name__,
@@ -277,6 +280,30 @@ def close_db(exception=None):
         db.close()
 
 
+def ensure_user_columns():
+    db = get_db()
+    cursor = db.cursor()
+
+    if db.is_mysql:
+        cursor.execute("SHOW COLUMNS FROM users")
+        fetched = cursor.fetchall()
+        columns = {row["Field"] if isinstance(row, dict) else row[0] for row in fetched}
+    else:
+        cursor.execute("PRAGMA table_info(users)")
+        columns = {row[1] for row in cursor.fetchall()}
+
+    if "staff_phone" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN staff_phone VARCHAR(40)" if db.is_mysql else "ALTER TABLE users ADD COLUMN staff_phone TEXT")
+    if "staff_position" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN staff_position VARCHAR(100) DEFAULT 'Staff'" if db.is_mysql else "ALTER TABLE users ADD COLUMN staff_position TEXT DEFAULT 'Staff'")
+    if "joined_date" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN joined_date DATE" if db.is_mysql else "ALTER TABLE users ADD COLUMN joined_date TEXT")
+    if "staff_status" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN staff_status VARCHAR(40) DEFAULT 'Aktif'" if db.is_mysql else "ALTER TABLE users ADD COLUMN staff_status TEXT DEFAULT 'Aktif'")
+    if "is_active" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN is_active TINYINT NOT NULL DEFAULT 1" if db.is_mysql else "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+
+
 def init_db():
     db = get_db()
 
@@ -289,6 +316,11 @@ def init_db():
                 email VARCHAR(255) UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 role VARCHAR(50) NOT NULL,
+                staff_phone VARCHAR(40),
+                staff_position VARCHAR(100) DEFAULT 'Staff',
+                joined_date DATE,
+                staff_status VARCHAR(40) DEFAULT 'Aktif',
+                is_active TINYINT NOT NULL DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -310,6 +342,11 @@ def init_db():
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL,
+                staff_phone TEXT,
+                staff_position TEXT DEFAULT 'Staff',
+                joined_date TEXT,
+                staff_status TEXT DEFAULT 'Aktif',
+                is_active INTEGER NOT NULL DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -319,6 +356,8 @@ def init_db():
             );
             """
         )
+
+    ensure_user_columns()
 
 
 def ensure_menu_columns():
@@ -945,6 +984,110 @@ def parse_menu_price(price_value):
     return price
 
 
+def parse_staff_date(value):
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    for date_format in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(value, date_format).date().isoformat()
+        except ValueError:
+            continue
+    return ""
+
+
+def format_staff_date(value):
+    value = str(value or "").strip()
+    if not value:
+        return "-"
+    date_part = value[:10]
+    parsed_date = parse_report_date(date_part)
+    if parsed_date:
+        return format_short_date(parsed_date)
+    return value
+
+
+def normalize_staff_status(status, is_active=True):
+    status = str(status or "Aktif").strip().title()
+    if status not in STAFF_STATUSES:
+        status = "Aktif"
+    if not is_active:
+        return "Nonaktif"
+    return status
+
+
+def staff_status_tone(status):
+    status_key = str(status or "").strip().lower()
+    if status_key == "aktif":
+        return "active"
+    if status_key == "cuti":
+        return "leave"
+    return "inactive"
+
+
+def staff_initial(name):
+    name = str(name or "").strip()
+    return name[:1].upper() if name else "S"
+
+
+def format_staff_member(row):
+    data = row_to_dict(row)
+    is_active = int(data.get("is_active", 1) or 0) == 1
+    status = normalize_staff_status(data.get("staff_status"), is_active)
+    joined_date = data.get("joined_date") or data.get("created_at")
+    return {
+        "id": data.get("id"),
+        "full_name": data.get("full_name") or "Staff",
+        "initial": staff_initial(data.get("full_name")),
+        "email": data.get("email") or "-",
+        "phone": data.get("staff_phone") or "-",
+        "phone_value": data.get("staff_phone") or "",
+        "position": data.get("staff_position") or "Staff",
+        "joined_date": format_staff_date(joined_date),
+        "joined_date_value": parse_staff_date(joined_date) or datetime.now().date().isoformat(),
+        "status": status,
+        "status_tone": staff_status_tone(status),
+        "is_active": is_active,
+    }
+
+
+def get_staff_form_data():
+    is_active = request.form.get("is_active", "1") == "1"
+    status = normalize_staff_status(request.form.get("staff_status", "Aktif"), is_active)
+    if status == "Nonaktif":
+        is_active = False
+    return {
+        "full_name": request.form.get("full_name", "").strip(),
+        "email": request.form.get("email", "").strip().lower(),
+        "staff_phone": request.form.get("staff_phone", "").strip(),
+        "staff_position": request.form.get("staff_position", "").strip(),
+        "joined_date": request.form.get("joined_date", "").strip(),
+        "staff_status": status,
+        "is_active": is_active,
+    }
+
+
+def validate_staff_form(form_data, require_email=True):
+    errors = []
+    if not form_data["full_name"]:
+        errors.append("Nama lengkap wajib diisi.")
+    if require_email:
+        if not form_data["email"]:
+            errors.append("Email wajib diisi.")
+        elif "@" not in form_data["email"]:
+            errors.append("Format email tidak valid.")
+    if not form_data["staff_phone"]:
+        errors.append("Nomor telepon wajib diisi.")
+    if not form_data["staff_position"]:
+        errors.append("Peran staff wajib diisi.")
+    joined_date = parse_staff_date(form_data["joined_date"])
+    if not joined_date:
+        errors.append("Tanggal bergabung wajib diisi dengan format tanggal yang valid.")
+    if form_data["staff_status"] not in STAFF_STATUSES:
+        errors.append("Status staff tidak valid.")
+    return errors, joined_date
+
+
 def get_current_shift():
     current_hour = datetime.now().hour
     if 5 <= current_hour < 12:
@@ -1036,12 +1179,17 @@ def login():
             flash("Email atau password salah. Cek lagi email yang terdaftar dan password saat registrasi.", "error")
             return render_template("login.html", email=email)
 
-        user_role = str(user["role"] or "").strip().lower()
+        user_data = row_to_dict(user)
+        user_role = str(user_data.get("role") or "").strip().lower()
+        if user_role == "staff" and int(user_data.get("is_active", 1) or 0) != 1:
+            flash("Akun staff ini sedang nonaktif. Silakan hubungi owner.", "error")
+            return render_template("login.html", email=email)
+
         session.clear()
-        session["user_id"] = user["id"]
-        session["full_name"] = user["full_name"]
-        session["name"] = user["full_name"]
-        session["username"] = user["full_name"]
+        session["user_id"] = user_data["id"]
+        session["full_name"] = user_data["full_name"]
+        session["name"] = user_data["full_name"]
+        session["username"] = user_data["full_name"]
         session["role"] = user_role
         flash(f"Login sebagai {session['role'].title()} berhasil.", "success")
         return redirect_for_role()
@@ -1503,11 +1651,183 @@ def owner_reports_print():
 @app.route("/owner/users")
 @owner_required
 def owner_users():
+    init_db()
+    page = request.args.get("page", 1, type=int)
+    per_page = 6
+
+    if page < 1:
+        page = 1
+
+    db = get_db()
+    offset = (page - 1) * per_page
+    total = fetch_scalar(db.execute("SELECT COUNT(*) FROM users WHERE LOWER(role) = ?", ("staff",))) or 0
+    staff_rows = db.execute(
+        """
+        SELECT id, full_name, email, staff_phone, staff_position, joined_date, staff_status, is_active, created_at
+        FROM users
+        WHERE LOWER(role) = ?
+        ORDER BY id ASC
+        LIMIT ? OFFSET ?
+        """,
+        ("staff", per_page, offset),
+    ).fetchall()
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
     return render_template(
-        "dashboard_placeholder.html",
-        full_name=session.get("username", "Owner"),
-        role="Owner",
-        page_title="User Owner",
+        "owner_staff.html",
+        owner_name=get_owner_name(),
+        active_page="staff",
+        staff_members=[format_staff_member(staff) for staff in staff_rows],
+        page=page,
+        total_pages=total_pages,
+        total=total,
+        per_page=per_page,
+    )
+
+
+@app.route("/owner/users/add", methods=["GET", "POST"])
+@owner_required
+def owner_users_add():
+    init_db()
+
+    if request.method == "POST":
+        form_data = get_staff_form_data()
+        errors, joined_date = validate_staff_form(form_data)
+
+        if errors:
+            return render_template(
+                "owner_staff_add.html",
+                owner_name=get_owner_name(),
+                active_page="staff",
+                form_data=form_data,
+                staff_positions=STAFF_POSITIONS,
+                errors=errors,
+            )
+
+        try:
+            execute_commit(
+                """
+                INSERT INTO users (
+                    full_name, email, password_hash, role, staff_phone, staff_position,
+                    joined_date, staff_status, is_active
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    form_data["full_name"],
+                    form_data["email"],
+                    generate_password_hash(STAFF_DEFAULT_PASSWORD),
+                    "staff",
+                    form_data["staff_phone"],
+                    form_data["staff_position"],
+                    joined_date,
+                    "Aktif",
+                    1,
+                ),
+            )
+        except Exception:
+            return render_template(
+                "owner_staff_add.html",
+                owner_name=get_owner_name(),
+                active_page="staff",
+                form_data=form_data,
+                staff_positions=STAFF_POSITIONS,
+                errors=["Email sudah terdaftar. Gunakan email staff yang berbeda."],
+            )
+
+        flash(f"Staff berhasil ditambahkan. Password awal: {STAFF_DEFAULT_PASSWORD}", "success")
+        return redirect(url_for("owner_users"))
+
+    return render_template(
+        "owner_staff_add.html",
+        owner_name=get_owner_name(),
+        active_page="staff",
+        form_data={},
+        staff_positions=STAFF_POSITIONS,
+        errors=[],
+    )
+
+
+@app.route("/owner/users/<int:staff_id>/edit", methods=["GET", "POST"])
+@owner_required
+def owner_users_edit(staff_id):
+    init_db()
+    db = get_db()
+    staff = db.execute(
+        """
+        SELECT id, full_name, email, staff_phone, staff_position, joined_date, staff_status, is_active, created_at
+        FROM users
+        WHERE id = ? AND LOWER(role) = ?
+        """,
+        (staff_id, "staff"),
+    ).fetchone()
+
+    if staff is None:
+        flash("Data staff tidak ditemukan.", "error")
+        return redirect(url_for("owner_users"))
+
+    staff_data = format_staff_member(staff)
+
+    if request.method == "POST":
+        form_data = get_staff_form_data()
+        errors, joined_date = validate_staff_form(form_data)
+
+        if errors:
+            return render_template(
+                "owner_staff_edit.html",
+                owner_name=get_owner_name(),
+                active_page="staff",
+                staff=staff_data,
+                form_data=form_data,
+                staff_positions=STAFF_POSITIONS,
+                staff_statuses=STAFF_STATUSES,
+                errors=errors,
+            )
+
+        try:
+            execute_commit(
+                """
+                UPDATE users
+                SET full_name = ?, email = ?, staff_phone = ?, staff_position = ?,
+                    joined_date = ?, staff_status = ?, is_active = ?
+                WHERE id = ? AND LOWER(role) = ?
+                """,
+                (
+                    form_data["full_name"],
+                    form_data["email"],
+                    form_data["staff_phone"],
+                    form_data["staff_position"],
+                    joined_date,
+                    form_data["staff_status"],
+                    1 if form_data["is_active"] else 0,
+                    staff_id,
+                    "staff",
+                ),
+            )
+        except Exception:
+            return render_template(
+                "owner_staff_edit.html",
+                owner_name=get_owner_name(),
+                active_page="staff",
+                staff=staff_data,
+                form_data=form_data,
+                staff_positions=STAFF_POSITIONS,
+                staff_statuses=STAFF_STATUSES,
+                errors=["Email sudah digunakan akun lain. Gunakan email yang berbeda."],
+            )
+
+        flash("Data staff berhasil diperbarui.", "success")
+        return redirect(url_for("owner_users"))
+
+    return render_template(
+        "owner_staff_edit.html",
+        owner_name=get_owner_name(),
+        active_page="staff",
+        staff=staff_data,
+        form_data={},
+        staff_positions=STAFF_POSITIONS,
+        staff_statuses=STAFF_STATUSES,
+        errors=[],
     )
 
 

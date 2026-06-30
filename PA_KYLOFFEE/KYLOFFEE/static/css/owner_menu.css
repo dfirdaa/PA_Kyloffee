@@ -218,6 +218,126 @@
     }
 }
 
+.owner-content--staff {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding-top: 48px;
+}
+
+.staff-heading {
+    align-items: center;
+    margin-bottom: 32px;
+}
+
+.staff-heading h1 {
+    margin: 0 0 10px;
+    font-size: 28px;
+    letter-spacing: -0.4px;
+}
+
+.staff-add-button {
+    min-width: 188px;
+    height: 48px;
+    margin-top: 0;
+    font-family: "Courier New", monospace;
+    letter-spacing: 1px;
+}
+
+.staff-table-card {
+    border-radius: 8px;
+}
+
+.staff-table {
+    min-width: 900px;
+}
+
+.staff-table td {
+    height: 72px;
+}
+
+.staff-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.staff-name-cell strong {
+    font-size: 15px;
+}
+
+.staff-avatar {
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: #f1e7e5;
+    color: #4a352e;
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.staff-role-pill {
+    display: inline-flex;
+    min-width: 62px;
+    min-height: 24px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: #ecebe8;
+    color: #5c504b;
+    padding: 0 12px;
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.staff-contact {
+    display: grid;
+    gap: 4px;
+}
+
+.staff-contact small {
+    color: var(--kyloffee-muted);
+}
+
+.staff-status {
+    min-width: 76px;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border-radius: 999px;
+    padding: 0 11px;
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.staff-status i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.staff-status--active {
+    background: #eef8f0;
+    color: var(--kyloffee-success);
+}
+
+.staff-status--leave {
+    background: #fff0dd;
+    color: #c45c14;
+}
+
+.staff-status--inactive {
+    background: #ffe9eb;
+    color: var(--kyloffee-danger);
+}
+
 .report-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
