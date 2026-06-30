@@ -1396,8 +1396,10 @@ input[type="password"]::-ms-clear { display: none; }
 
 .pos-workspace-mock {
     min-width: 0;
+    min-height: 0;
     display: grid;
     grid-template-rows: 81px minmax(0, 1fr);
+    overflow: hidden;
     background: #f6f4f0;
 }
 
@@ -1463,13 +1465,17 @@ input[type="password"]::-ms-clear { display: none; }
 
 .pos-board-mock {
     min-height: 0;
+    height: 100%;
     display: grid;
     grid-template-columns: minmax(0, 1fr) 405px;
+    overflow: hidden;
 }
 
 .pos-menu-mock {
     min-width: 0;
-    overflow: auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 28px 26px 44px 40px;
     border-right: 1px solid #d8cfc8;
 }
@@ -1878,6 +1884,10 @@ input[type="password"]::-ms-clear { display: none; }
         min-height: 100vh;
         overflow: visible;
         grid-template-columns: 240px minmax(0, 1fr);
+    }
+    .pos-workspace-mock,
+    .pos-board-mock {
+        overflow: visible;
     }
     .pos-board-mock {
         grid-template-columns: 1fr;

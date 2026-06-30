@@ -140,6 +140,7 @@ STAFF_INVITATION_CODE = "KYLOFFEE-STAFF"
 STAFF_DEFAULT_PASSWORD = os.getenv("STAFF_DEFAULT_PASSWORD", "kyloffee123")
 MIN_MENU_PRICE = 500
 MENU_CATEGORIES = [
+    "Coffee",
     "Black Series",
     "White Series",
     "Signature Series",
@@ -661,6 +662,49 @@ def get_ordered_menu_categories(categories):
         if key not in known_category_keys
     )
     return ordered_categories + extra_categories
+
+
+def get_pos_category_filters(categories):
+    category_lookup = {}
+    for category in categories:
+        category_name = str(category or "").strip()
+        if category_name:
+            category_lookup[category_key(category_name)] = category_name
+
+    coffee_keys = {
+        category_key("Coffee"),
+        category_key("Black Series"),
+        category_key("White Series"),
+        category_key("Signature Series"),
+    }
+    preferred_filters = [
+        ("Coffee", coffee_keys),
+        ("Non Coffee", {category_key("Non Coffee")}),
+        ("Food", {category_key("Food")}),
+        ("Black Series", {category_key("Black Series")}),
+    ]
+
+    filters = []
+    used_keys = set()
+    for label, keys in preferred_filters:
+        values = [category_lookup[key] for key in keys if key in category_lookup]
+        if label == "Coffee" and category_key("Coffee") not in category_lookup:
+            values = [
+                category
+                for key, category in category_lookup.items()
+                if key in coffee_keys and key != category_key("Coffee")
+            ]
+        if values or label in {"Coffee", "Non Coffee", "Food", "Black Series"}:
+            filters.append({"label": label, "values": values or [label]})
+            used_keys.update(keys)
+
+    extra_categories = [
+        category
+        for key, category in sorted(category_lookup.items(), key=lambda item: item[1].casefold())
+        if key not in used_keys
+    ]
+    filters.extend({"label": category, "values": [category]} for category in extra_categories)
+    return filters
 
 
 def format_report_datetime(value):
@@ -1814,6 +1858,22 @@ def owner_menu_edit(menu_id):
     )
 
 
+@app.route("/owner/menu/<int:menu_id>/delete", methods=["POST"])
+@owner_required
+def owner_menu_delete(menu_id):
+    init_menu_table()
+    db = get_db()
+    menu = db.execute("SELECT id FROM menus WHERE id = ?", (menu_id,)).fetchone()
+
+    if menu is None:
+        flash("Menu tidak ditemukan.", "error")
+        return redirect(url_for("owner_menu"))
+
+    execute_commit("DELETE FROM menus WHERE id = ?", (menu_id,))
+    flash("Menu berhasil dihapus.", "success")
+    return redirect(url_for("owner_menu"))
+
+
 @app.route("/api/owner/menus", methods=["GET"])
 @owner_required
 def get_owner_menus():
@@ -2160,21 +2220,18 @@ def pos():
         """
     ).fetchall()
     products = [dict(product) for product in products]
-    seen_categories = set()
-    menu_categories = []
+    active_categories = []
     for product in products:
         category = str(product.get("category") or "").strip()
         product["category"] = category
-        category_key = category.casefold()
-        if category and category_key not in seen_categories:
-            seen_categories.add(category_key)
-            menu_categories.append(category)
+        if category:
+            active_categories.append(category)
 
     return render_template(
         "pos.html",
         shift=get_current_shift(),
         staff_name=session.get("full_name", "Staff"),
-        menu_categories=menu_categories,
+        menu_categories=get_pos_category_filters(active_categories),
         products=products,
     )
 
