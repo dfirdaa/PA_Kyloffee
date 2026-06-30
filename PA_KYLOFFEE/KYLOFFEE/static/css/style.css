@@ -346,6 +346,41 @@ input[type="password"]::-ms-clear { display: none; }
 .auth-button--link { width: auto; padding: 0 46px; margin: 20px auto 12px; font-size: 21px; }
 .auth-switch { text-align: center; color: var(--muted); margin: 22px 0 0; }
 .auth-switch a { font-weight: 800; color: var(--brown); text-decoration: none; }
+.auth-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    margin: -4px 0 0;
+    color: var(--brown);
+    font-size: 18px;
+    line-height: 1;
+}
+.auth-divider::before,
+.auth-divider::after {
+    content: "";
+    width: 82px;
+    height: 1px;
+    background: #eadfd8;
+}
+.auth-switch--login {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-top: -4px;
+    color: #6f5f58;
+    font-size: 17px;
+    line-height: 1.45;
+}
+.auth-switch-links {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+}
 .auth-switch--register {
     margin-top: 24px;
     color: #5c504b;

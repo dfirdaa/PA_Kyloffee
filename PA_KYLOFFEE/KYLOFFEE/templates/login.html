@@ -40,19 +40,19 @@
 
                 <button type="submit" class="auth-button">Login</button>
 
-            <div class="auth-divider">
-        <span>atau</span>
-        </div>
+                <div class="auth-divider">
+                    <span>atau</span>
+                </div>
 
-                
+                <p class="auth-switch auth-switch--login">
+                    Belum punya akun?
+                    <span class="auth-switch-links">
+                        <a href="{{ url_for('register_owner') }}">Daftar Owner</a>
+                        <span>atau</span>
+                        <a href="{{ url_for('register_staff') }}">Daftar Staff</a>
+                    </span>
+                </p>
             </form>
-
-            <p class="auth-switch auth-switch--login">
-                Belum punya akun?
-                <a href="{{ url_for('register_owner') }}">Daftar Owner</a>
-                atau
-                <a href="{{ url_for('register_staff') }}">Daftar Staff</a>
-            </p>
         </section>
     </section>
 </main>
