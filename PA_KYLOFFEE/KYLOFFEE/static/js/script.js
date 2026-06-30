@@ -17,24 +17,54 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const cart = new Map();
     let isSubmitting = false;
+    let selectedMethod = "Cash";
+    let selectedCategory = "all";
+    let cashValue = "";
+    let qrisRequestId = 0;
+    let qrisState = {
+        orderCode: "",
+        total: 0,
+        timestamp: "",
+        loading: false,
+        error: false,
+    };
 
     const checkoutUrl = posCart.dataset.checkoutUrl;
+    const qrisUrl = posCart.dataset.qrisUrl;
     const cartItems = posCart.querySelector("[data-cart-items]");
     const cartEmpty = posCart.querySelector("[data-cart-empty]");
-    const cartCount = posCart.querySelector("[data-cart-count]");
-    const checkoutButton = posCart.querySelector("[data-checkout-button]");
+    const cartCountLabels = posCart.querySelectorAll("[data-cart-count]");
+    const menuSearchInput = posCart.querySelector("[data-menu-search]");
+    const openPaymentButton = posCart.querySelector("[data-open-payment]");
+    const paymentModal = posCart.querySelector("[data-payment-modal]");
     const customerNameInput = posCart.querySelector("[data-customer-name]");
-    const paymentMethodInput = posCart.querySelector("[data-payment-method]");
     const discountInput = posCart.querySelector("[data-discount-amount]");
     const taxInput = posCart.querySelector("[data-tax-amount]");
     const operationalCostInput = posCart.querySelector("[data-operational-cost]");
     const messageBox = posCart.querySelector("[data-pos-message]");
+    const methodButtons = posCart.querySelectorAll("[data-payment-method]");
+    const paymentModes = posCart.querySelectorAll("[data-payment-mode]");
+    const completeCashButton = posCart.querySelector("[data-complete-cash]");
+    const checkQrisButton = posCart.querySelector("[data-check-qris]");
+    const cashReceived = posCart.querySelector("[data-cash-received]");
+    const cashChange = posCart.querySelector("[data-cash-change]");
+    const qrisImage = posCart.querySelector("[data-qris-image]");
+    const qrisPlaceholder = posCart.querySelector("[data-qris-placeholder]");
+    const qrisTotal = posCart.querySelector("[data-qris-total]");
+    const qrisOrder = posCart.querySelector("[data-qris-order]");
+    const qrisStatus = posCart.querySelector("[data-qris-status]");
 
-    const summarySubtotal = posCart.querySelector("[data-summary-subtotal]");
-    const summaryDiscount = posCart.querySelector("[data-summary-discount]");
-    const summaryTax = posCart.querySelector("[data-summary-tax]");
-    const summaryCost = posCart.querySelector("[data-summary-cost]");
-    const summaryTotal = posCart.querySelector("[data-summary-total]");
+    const summarySubtotalLabels = posCart.querySelectorAll("[data-summary-subtotal]");
+    const summaryDiscountLabels = posCart.querySelectorAll("[data-summary-discount]");
+    const summaryTaxLabels = posCart.querySelectorAll("[data-summary-tax]");
+    const summaryCostLabels = posCart.querySelectorAll("[data-summary-cost]");
+    const summaryTotalLabels = posCart.querySelectorAll("[data-summary-total]");
+
+    function setTextAll(nodes, text) {
+        nodes.forEach(function (node) {
+            node.textContent = text;
+        });
+    }
 
     function formatCurrency(amount) {
         return "Rp " + Math.max(0, Math.round(Number(amount) || 0)).toLocaleString("id-ID");
@@ -42,6 +72,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function parseAmount(input) {
         return Math.max(0, Number(input && input.value ? input.value : 0) || 0);
+    }
+
+    function getCashAmount() {
+        return Math.max(0, Number(cashValue || 0) || 0);
     }
 
     function escapeHtml(value) {
@@ -68,6 +102,28 @@ document.addEventListener("DOMContentLoaded", function () {
         messageBox.className = "pos-message";
     }
 
+    function openPaymentModal() {
+        if (!paymentModal || cart.size === 0) return;
+        paymentModal.hidden = false;
+        document.body.classList.add("is-payment-open");
+        renderCart();
+    }
+
+    function closePaymentModal() {
+        if (!paymentModal) return;
+        paymentModal.hidden = true;
+        document.body.classList.remove("is-payment-open");
+    }
+
+    function filterProducts() {
+        const keyword = (menuSearchInput && menuSearchInput.value ? menuSearchInput.value : "").trim().toLowerCase();
+        document.querySelectorAll("[data-product-card]").forEach(function (card) {
+            const matchesCategory = selectedCategory === "all" || card.dataset.category === selectedCategory;
+            const matchesSearch = !keyword || (card.dataset.name || "").toLowerCase().includes(keyword);
+            card.hidden = !matchesCategory || !matchesSearch;
+        });
+    }
+
     function getTotals() {
         let subtotal = 0;
         let itemCount = 0;
@@ -85,17 +141,119 @@ document.addEventListener("DOMContentLoaded", function () {
         return { subtotal, itemCount, discount, tax, operationalCost, total };
     }
 
+    function resetQrisState(message) {
+        qrisRequestId += 1;
+        qrisState = { orderCode: "", total: 0, timestamp: "", loading: false, error: false };
+        qrisImage.hidden = true;
+        qrisImage.removeAttribute("src");
+        qrisPlaceholder.hidden = false;
+        qrisPlaceholder.textContent = "QRIS";
+        qrisOrder.textContent = message || "Invoice akan dibuat setelah keranjang siap.";
+        qrisStatus.textContent = message || "Menunggu QR dibuat.";
+    }
+
+    function updatePaymentMethod() {
+        methodButtons.forEach(function (button) {
+            button.classList.toggle("is-active", button.dataset.paymentMethod === selectedMethod);
+        });
+        paymentModes.forEach(function (mode) {
+            mode.classList.toggle("is-active", mode.dataset.paymentMode === selectedMethod);
+        });
+    }
+
+    function ensureQrisCode(total) {
+        if (selectedMethod !== "QRIS") return;
+        if (cart.size === 0 || total <= 0) {
+            resetQrisState("Tambahkan menu untuk membuat QRIS.");
+            return;
+        }
+        if (qrisState.orderCode && qrisState.total === total) return;
+        if (qrisState.loading && qrisState.total === total) return;
+        if (qrisState.error && qrisState.total === total) return;
+
+        const requestId = qrisRequestId + 1;
+        qrisRequestId = requestId;
+        qrisState = { orderCode: "", total, timestamp: "", loading: true, error: false };
+        qrisImage.hidden = true;
+        qrisPlaceholder.hidden = false;
+        qrisPlaceholder.textContent = "Loading";
+        qrisOrder.textContent = "Membuat QRIS...";
+        qrisStatus.textContent = "Generating QR Code...";
+        checkQrisButton.disabled = true;
+
+        fetch(qrisUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ total_amount: total }),
+        })
+            .then(function (response) {
+                return response.json().catch(function () {
+                    return {};
+                }).then(function (body) {
+                    if (!response.ok || !body.success) {
+                        throw new Error(body.message || "Gagal membuat QRIS.");
+                    }
+                    return body;
+                });
+            })
+            .then(function (body) {
+                if (requestId !== qrisRequestId) return;
+                qrisState = {
+                    orderCode: body.order_code,
+                    total,
+                    timestamp: body.timestamp,
+                    loading: false,
+                    error: false,
+                };
+                qrisImage.src = body.qr_url;
+                qrisImage.hidden = false;
+                qrisPlaceholder.hidden = true;
+                qrisOrder.textContent = body.order_code + " | " + body.timestamp;
+                qrisStatus.textContent = "Menunggu pembayaran QRIS.";
+                renderCart();
+            })
+            .catch(function (error) {
+                if (requestId !== qrisRequestId) return;
+                qrisState = { orderCode: "", total, timestamp: "", loading: false, error: true };
+                qrisImage.hidden = true;
+                qrisImage.removeAttribute("src");
+                qrisPlaceholder.hidden = false;
+                qrisPlaceholder.textContent = "QRIS";
+                qrisOrder.textContent = error.message;
+                qrisStatus.textContent = error.message;
+                showMessage(error.message, "error");
+                renderCart();
+            });
+    }
+
     function renderCart() {
         const totals = getTotals();
-        cartCount.textContent = totals.itemCount + " item";
-        cartEmpty.hidden = cart.size > 0;
-        checkoutButton.disabled = isSubmitting || cart.size === 0;
+        const received = getCashAmount();
+        const change = Math.max(received - totals.total, 0);
 
-        summarySubtotal.textContent = formatCurrency(totals.subtotal);
-        summaryDiscount.textContent = formatCurrency(totals.discount);
-        summaryTax.textContent = formatCurrency(totals.tax);
-        summaryCost.textContent = formatCurrency(totals.operationalCost);
-        summaryTotal.textContent = formatCurrency(totals.total);
+        setTextAll(cartCountLabels, totals.itemCount + (totals.itemCount === 1 ? " Item" : " Items"));
+        cartEmpty.hidden = cart.size > 0;
+
+        setTextAll(summarySubtotalLabels, formatCurrency(totals.subtotal));
+        setTextAll(summaryDiscountLabels, formatCurrency(totals.discount));
+        setTextAll(summaryTaxLabels, formatCurrency(totals.tax));
+        setTextAll(summaryCostLabels, formatCurrency(totals.operationalCost));
+        setTextAll(summaryTotalLabels, formatCurrency(totals.total));
+        cashReceived.textContent = formatCurrency(received);
+        cashChange.textContent = formatCurrency(change);
+        qrisTotal.textContent = formatCurrency(totals.total);
+        if (openPaymentButton) {
+            openPaymentButton.disabled = isSubmitting || cart.size === 0 || totals.total <= 0;
+        }
+
+        completeCashButton.disabled = isSubmitting || cart.size === 0 || totals.total <= 0 || received < totals.total;
+        checkQrisButton.disabled = (
+            isSubmitting ||
+            cart.size === 0 ||
+            totals.total <= 0 ||
+            qrisState.loading ||
+            !qrisState.orderCode
+        );
 
         cartItems.innerHTML = Array.from(cart.values()).map(function (item) {
             return [
@@ -114,6 +272,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 '</article>',
             ].join("");
         }).join("");
+
+        updatePaymentMethod();
+        ensureQrisCode(totals.total);
+        filterProducts();
     }
 
     function addProduct(card) {
@@ -156,6 +318,59 @@ document.addEventListener("DOMContentLoaded", function () {
         card.classList.toggle("is-out", nextStock <= 0);
     }
 
+    function buildCheckoutPayload(method, options) {
+        const totals = getTotals();
+        return {
+            customer_name: customerNameInput.value,
+            payment_method: method,
+            order_code: options && options.orderCode ? options.orderCode : "",
+            received_amount: options && options.receivedAmount ? options.receivedAmount : totals.total,
+            change_amount: options && options.changeAmount ? options.changeAmount : 0,
+            discount_amount: totals.discount,
+            tax_amount: totals.tax,
+            operational_cost: totals.operationalCost,
+            items: Array.from(cart.values()).map(function (item) {
+                return { menu_id: item.id, quantity: item.quantity };
+            }),
+        };
+    }
+
+    function submitPayment(method, options) {
+        if (cart.size === 0 || isSubmitting) return;
+
+        isSubmitting = true;
+        renderCart();
+        clearMessage();
+
+        fetch(checkoutUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildCheckoutPayload(method, options || {})),
+        })
+            .then(function (response) {
+                return response.json().catch(function () {
+                    return {};
+                }).then(function (body) {
+                    if (!response.ok || !body.success) {
+                        throw new Error(body.message || "Transaksi gagal disimpan.");
+                    }
+                    return body;
+                });
+            })
+            .then(function (body) {
+                const transaction = body.transaction || {};
+                (transaction.items || []).forEach(function (item) {
+                    updateProductStock(item.menu_id, item.stock_remaining);
+                });
+                window.location.href = transaction.success_url || "/pos";
+            })
+            .catch(function (error) {
+                showMessage(error.message, "error");
+                isSubmitting = false;
+                renderCart();
+            });
+    }
+
     document.querySelectorAll("[data-add-product]").forEach(function (button) {
         button.addEventListener("click", function () {
             const card = button.closest("[data-product-card]");
@@ -165,13 +380,42 @@ document.addEventListener("DOMContentLoaded", function () {
 
     document.querySelectorAll("[data-category-filter]").forEach(function (button) {
         button.addEventListener("click", function () {
-            const selectedCategory = button.dataset.categoryFilter;
+            selectedCategory = button.dataset.categoryFilter;
             document.querySelectorAll("[data-category-filter]").forEach(function (item) {
                 item.classList.toggle("is-active", item === button);
             });
-            document.querySelectorAll("[data-product-card]").forEach(function (card) {
-                card.hidden = selectedCategory !== "all" && card.dataset.category !== selectedCategory;
+            filterProducts();
+        });
+    });
+
+    posCart.querySelectorAll("[data-filter-reset]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            selectedCategory = "all";
+            if (menuSearchInput) menuSearchInput.value = "";
+            document.querySelectorAll("[data-category-filter]").forEach(function (item) {
+                item.classList.toggle("is-active", item.dataset.categoryFilter === "all");
             });
+            filterProducts();
+        });
+    });
+
+    if (menuSearchInput) {
+        menuSearchInput.addEventListener("input", filterProducts);
+    }
+
+    if (openPaymentButton) {
+        openPaymentButton.addEventListener("click", openPaymentModal);
+    }
+
+    posCart.querySelectorAll("[data-close-payment]").forEach(function (button) {
+        button.addEventListener("click", closePaymentModal);
+    });
+
+    methodButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+            selectedMethod = button.dataset.paymentMethod;
+            clearMessage();
+            renderCart();
         });
     });
 
@@ -197,66 +441,70 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     [discountInput, taxInput, operationalCostInput].forEach(function (input) {
-        input.addEventListener("input", renderCart);
+        input.addEventListener("input", function () {
+            if (selectedMethod === "QRIS") resetQrisState("Total berubah. QRIS akan dibuat ulang.");
+            renderCart();
+        });
     });
 
-    checkoutButton.addEventListener("click", function () {
-        if (cart.size === 0 || isSubmitting) return;
+    posCart.querySelectorAll("[data-quick-cash]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            cashValue = button.dataset.quickCash;
+            clearMessage();
+            renderCart();
+        });
+    });
 
+    posCart.querySelectorAll("[data-cash-key]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            const key = button.dataset.cashKey;
+            if (key === "clear") {
+                cashValue = "";
+            } else if (key === "back") {
+                cashValue = cashValue.slice(0, -1);
+            } else if (cashValue.length < 10) {
+                cashValue = (cashValue + key).replace(/^0+(?=\d)/, "");
+            }
+            clearMessage();
+            renderCart();
+        });
+    });
+
+    completeCashButton.addEventListener("click", function () {
         const totals = getTotals();
-        const payload = {
-            customer_name: customerNameInput.value,
-            payment_method: paymentMethodInput.value,
-            discount_amount: totals.discount,
-            tax_amount: totals.tax,
-            operational_cost: totals.operationalCost,
-            items: Array.from(cart.values()).map(function (item) {
-                return { menu_id: item.id, quantity: item.quantity };
-            }),
-        };
-
-        isSubmitting = true;
-        checkoutButton.textContent = "Menyimpan...";
-        renderCart();
-        clearMessage();
-
-        fetch(checkoutUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        })
-            .then(function (response) {
-                return response.json().catch(function () {
-                    return {};
-                }).then(function (body) {
-                    if (!response.ok || !body.success) {
-                        throw new Error(body.message || "Transaksi gagal disimpan.");
-                    }
-                    return body;
-                });
-            })
-            .then(function (body) {
-                const transaction = body.transaction || {};
-                (transaction.items || []).forEach(function (item) {
-                    updateProductStock(item.menu_id, item.stock_remaining);
-                });
-
-                cart.clear();
-                customerNameInput.value = "";
-                discountInput.value = 0;
-                taxInput.value = 0;
-                operationalCostInput.value = 0;
-                showMessage((body.message || "Transaksi berhasil disimpan.") + " Total: " + (transaction.total_display || formatCurrency(totals.total)), "success");
-            })
-            .catch(function (error) {
-                showMessage(error.message, "error");
-            })
-            .finally(function () {
-                isSubmitting = false;
-                checkoutButton.textContent = "Simpan Transaksi";
-                renderCart();
-            });
+        const received = getCashAmount();
+        if (received < totals.total) {
+            showMessage("Nominal diterima kurang dari total pembayaran.", "error");
+            return;
+        }
+        submitPayment("Cash", {
+            receivedAmount: received,
+            changeAmount: Math.max(received - totals.total, 0),
+        });
     });
 
+    checkQrisButton.addEventListener("click", function () {
+        const totals = getTotals();
+        if (!qrisState.orderCode) {
+            showMessage("QRIS belum siap. Tunggu QR Code selesai dibuat.", "error");
+            return;
+        }
+
+        qrisStatus.textContent = "Checking payment status...";
+        checkQrisButton.disabled = true;
+        checkQrisButton.textContent = "Checking...";
+
+        window.setTimeout(function () {
+            qrisStatus.textContent = "Payment Success";
+            checkQrisButton.textContent = "Payment Success";
+            submitPayment("QRIS", {
+                orderCode: qrisState.orderCode,
+                receivedAmount: totals.total,
+                changeAmount: 0,
+            });
+        }, 2300);
+    });
+
+    resetQrisState();
     renderCart();
 });

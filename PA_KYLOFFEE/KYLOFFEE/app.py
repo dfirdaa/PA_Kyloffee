@@ -2,6 +2,7 @@ import os
 import ssl
 import sqlite3
 import uuid
+from io import BytesIO
 from functools import wraps
 from pathlib import Path
 from datetime import date, datetime, timedelta
@@ -15,6 +16,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     session,
     url_for,
 )
@@ -26,6 +28,11 @@ try:
     import cloudinary.uploader
 except ImportError:  # pragma: no cover - only used when dependency is missing.
     cloudinary = None
+
+try:
+    import qrcode
+except ImportError:  # pragma: no cover - app still runs before dependency install.
+    qrcode = None
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE = BASE_DIR / "database.db"
@@ -1154,6 +1161,113 @@ def generate_order_code(now=None):
     return f"POS-{now:%Y%m%d%H%M%S}-{uuid.uuid4().hex[:4].upper()}"
 
 
+def generate_invoice_code(now=None):
+    now = now or datetime.now()
+    return f"INV{now:%Y%m%d%H%M%S}{uuid.uuid4().hex[:3].upper()}"
+
+
+def normalize_order_code(value):
+    value = str(value or "").strip().upper()
+    allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+    cleaned = "".join(char for char in value if char in allowed)
+    return cleaned[:60]
+
+
+def build_qris_payload(order_code, total_amount, timestamp):
+    return f"ORDER={order_code}\nTOTAL={int(total_amount or 0)}\nTIME={timestamp}"
+
+
+def remember_payment_details(order_code, payment_method, total_amount, received_amount=None, change_amount=None):
+    received = int(received_amount if received_amount is not None else total_amount or 0)
+    change = int(change_amount if change_amount is not None else max(received - int(total_amount or 0), 0))
+    session["last_payment"] = {
+        "order_code": order_code,
+        "payment_method": payment_method,
+        "total_amount": int(total_amount or 0),
+        "received_amount": received,
+        "change_amount": change,
+    }
+    session.modified = True
+
+
+def get_payment_details(order_code, transaction):
+    stored = session.get("last_payment") or {}
+    if stored.get("order_code") == order_code:
+        return {
+            "method": stored.get("payment_method") or transaction.get("payment_method") or "-",
+            "received_amount": int(stored.get("received_amount") or 0),
+            "change_amount": int(stored.get("change_amount") or 0),
+        }
+
+    total_amount = int(transaction.get("total_amount") or 0)
+    return {
+        "method": transaction.get("payment_method") or "-",
+        "received_amount": total_amount,
+        "change_amount": 0,
+    }
+
+
+def fetch_transaction_detail(order_code):
+    init_pos_tables()
+    db = get_db()
+    transaction = row_to_dict(
+        db.execute(
+            """
+            SELECT
+                t.id,
+                t.order_code,
+                t.transaction_date,
+                t.transaction_time,
+                t.customer_name,
+                t.payment_method,
+                t.subtotal_amount,
+                t.discount_amount,
+                t.tax_amount,
+                t.operational_cost,
+                t.total_amount,
+                t.item_count,
+                t.status,
+                u.full_name AS staff_name
+            FROM pos_transactions t
+            LEFT JOIN users u ON u.id = t.staff_id
+            WHERE t.order_code = ?
+            """,
+            (order_code,),
+        ).fetchone()
+    )
+    if not transaction:
+        return None
+
+    items = fetch_all_dict(
+        db.execute(
+            """
+            SELECT menu_name, quantity, unit_price, subtotal
+            FROM pos_transaction_items
+            WHERE transaction_id = ?
+            ORDER BY id ASC
+            """,
+            (transaction["id"],),
+        )
+    )
+
+    transaction_date = parse_report_date(str(transaction.get("transaction_date") or ""))
+    transaction["date_display"] = format_short_date(transaction_date) if transaction_date else transaction.get("transaction_date")
+    transaction["time_display"] = str(transaction.get("transaction_time") or "")[:5]
+    transaction["total_display"] = format_currency(transaction.get("total_amount") or 0)
+    transaction["subtotal_display"] = format_currency(transaction.get("subtotal_amount") or 0)
+    transaction["discount_display"] = format_currency(transaction.get("discount_amount") or 0)
+    transaction["tax_display"] = format_currency(transaction.get("tax_amount") or 0)
+    transaction["items"] = [
+        {
+            **item,
+            "unit_price_display": format_currency(item.get("unit_price") or 0),
+            "subtotal_display": format_currency(item.get("subtotal") or 0),
+        }
+        for item in items
+    ]
+    return transaction
+
+
 def create_pos_transaction(data):
     init_menu_table()
     init_pos_tables()
@@ -1161,6 +1275,12 @@ def create_pos_transaction(data):
     items = normalize_pos_items(data.get("items"))
     customer_name = str(data.get("customer_name") or "").strip() or "Walk-in Customer"
     payment_method = str(data.get("payment_method") or "Tunai").strip() or "Tunai"
+    if payment_method.lower() in {"tunai", "cash"}:
+        payment_method = "Cash"
+    elif payment_method.lower() == "qris":
+        payment_method = "QRIS"
+    else:
+        raise ValueError("Metode pembayaran hanya boleh Cash atau QRIS.")
     discount_amount = parse_pos_amount(data.get("discount_amount"), "Diskon")
     tax_amount = parse_pos_amount(data.get("tax_amount"), "Pajak")
     operational_cost = parse_pos_amount(data.get("operational_cost"), "Biaya operasional")
@@ -1222,8 +1342,13 @@ def create_pos_transaction(data):
         raise ValueError("Diskon tidak boleh lebih besar dari subtotal dan pajak.")
 
     total_amount = subtotal_amount - discount_amount + tax_amount
+    if payment_method == "Cash":
+        received_amount = parse_pos_amount(data.get("received_amount"), "Nominal diterima")
+        if received_amount < total_amount:
+            raise ValueError("Nominal diterima kurang dari total pembayaran.")
+
     now = datetime.now()
-    order_code = generate_order_code(now)
+    order_code = normalize_order_code(data.get("order_code")) or generate_order_code(now)
 
     try:
         cursor = db.execute(
@@ -2054,20 +2179,11 @@ def pos():
         ORDER BY id DESC
         """
     ).fetchall()
-    category_rows = db.execute(
-        """
-        SELECT DISTINCT category
-        FROM menus
-        WHERE is_active = 1
-        ORDER BY category ASC
-        """
-    ).fetchall()
-
     return render_template(
         "pos.html",
         shift=get_current_shift(),
         staff_name=session.get("full_name", "Staff"),
-        menu_categories=get_ordered_menu_categories(row["category"] for row in category_rows),
+        menu_categories=MENU_CATEGORIES,
         products=[dict(product) for product in products],
     )
 
@@ -2078,6 +2194,20 @@ def pos_checkout():
     data = request.get_json(silent=True) or {}
     try:
         transaction = create_pos_transaction(data)
+        payment_method = "QRIS" if str(data.get("payment_method") or "").strip().lower() == "qris" else "Cash"
+        received_amount = (
+            transaction["total_amount"]
+            if payment_method == "QRIS"
+            else parse_pos_amount(data.get("received_amount"), "Nominal diterima")
+        )
+        change_amount = max(received_amount - transaction["total_amount"], 0)
+        remember_payment_details(
+            transaction["order_code"],
+            payment_method,
+            transaction["total_amount"],
+            received_amount,
+            change_amount,
+        )
     except ValueError as exc:
         return jsonify({"success": False, "message": str(exc)}), 400
     except Exception:
@@ -2095,8 +2225,106 @@ def pos_checkout():
                 "tax_display": format_currency(transaction["tax_amount"]),
                 "operational_cost_display": format_currency(transaction["operational_cost"]),
                 "total_display": format_currency(transaction["total_amount"]),
+                "received_amount": received_amount,
+                "received_display": format_currency(received_amount),
+                "change_amount": change_amount,
+                "change_display": format_currency(change_amount),
+                "success_url": url_for("payment_success", order_code=transaction["order_code"]),
+                "receipt_url": url_for("pos_receipt", order_code=transaction["order_code"]),
             },
         }
+    )
+
+
+@app.route("/api/pos/qris", methods=["POST"])
+@staff_required
+def pos_qris_payload():
+    data = request.get_json(silent=True) or {}
+    try:
+        total_amount = parse_pos_amount(data.get("total_amount"), "Total pembayaran")
+    except ValueError as exc:
+        return jsonify({"success": False, "message": str(exc)}), 400
+
+    if total_amount <= 0:
+        return jsonify({"success": False, "message": "Total pembayaran harus lebih dari Rp 0."}), 400
+
+    timestamp = datetime.now().replace(microsecond=0).isoformat(timespec="minutes")
+    order_code = normalize_order_code(data.get("order_code")) or generate_invoice_code()
+    payload = build_qris_payload(order_code, total_amount, timestamp)
+
+    return jsonify(
+        {
+            "success": True,
+            "order_code": order_code,
+            "timestamp": timestamp,
+            "payload": payload,
+            "qr_url": url_for(
+                "pos_qris_code",
+                order_code=order_code,
+                total=total_amount,
+                timestamp=timestamp,
+            ),
+        }
+    )
+
+
+@app.route("/pos/qris-code/<order_code>.png")
+@staff_required
+def pos_qris_code(order_code):
+    if qrcode is None:
+        return "Paket qrcode belum terpasang. Jalankan pip install -r requirements.txt.", 503
+
+    total_amount = parse_pos_amount(request.args.get("total"), "Total pembayaran")
+    timestamp = request.args.get("timestamp", datetime.now().replace(microsecond=0).isoformat(timespec="minutes"))
+    order_code = normalize_order_code(order_code) or generate_invoice_code()
+    payload = build_qris_payload(order_code, total_amount, timestamp)
+
+    qr = qrcode.QRCode(version=None, box_size=12, border=2)
+    qr.add_data(payload)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="#3A1E1A", back_color="white")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return send_file(buffer, mimetype="image/png", download_name=f"{order_code}.png")
+
+
+@app.route("/pos/payment/success/<order_code>")
+@staff_required
+def payment_success(order_code):
+    order_code = normalize_order_code(order_code)
+    transaction = fetch_transaction_detail(order_code)
+    if transaction is None:
+        flash("Transaksi tidak ditemukan.", "error")
+        return redirect(url_for("pos"))
+
+    payment = get_payment_details(order_code, transaction)
+    return render_template(
+        "payment_success.html",
+        transaction=transaction,
+        payment=payment,
+        total_display=format_currency(transaction.get("total_amount") or 0),
+        received_display=format_currency(payment["received_amount"]),
+        change_display=format_currency(payment["change_amount"]),
+    )
+
+
+@app.route("/pos/receipt/<order_code>")
+@staff_required
+def pos_receipt(order_code):
+    order_code = normalize_order_code(order_code)
+    transaction = fetch_transaction_detail(order_code)
+    if transaction is None:
+        flash("Transaksi tidak ditemukan.", "error")
+        return redirect(url_for("pos"))
+
+    payment = get_payment_details(order_code, transaction)
+    return render_template(
+        "receipt.html",
+        transaction=transaction,
+        payment=payment,
+        received_display=format_currency(payment["received_amount"]),
+        change_display=format_currency(payment["change_amount"]),
     )
 
 
