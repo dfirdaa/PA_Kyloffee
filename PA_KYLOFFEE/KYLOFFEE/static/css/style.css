@@ -437,6 +437,7 @@ input[type="password"]::-ms-clear { display: none; }
 .print-summary-grid strong { font-size: 18px; }
 .print-table { width:100%; border-collapse: collapse; }
 .print-table th, .print-table td { border:1px solid #ddd; padding:10px; text-align:left; }
+
 @media print { .no-print { display:none; } .print-page { padding:0; background:white; } }
 
 @media (max-width: 760px) {
