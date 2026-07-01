@@ -118,6 +118,7 @@
 
 .action-cell {
     text-align: center;
+    white-space: nowrap;
 }
 
 .icon-button {
@@ -127,13 +128,26 @@
     align-items: center;
     justify-content: center;
     text-decoration: none;
+    border: 0;
+    background: transparent;
     border-radius: 7px;
     color: var(--kyloffee-brown);
     font-size: 19px;
+    font-family: inherit;
+    cursor: pointer;
 }
 
 .icon-button:hover {
     background: #f0e5de;
+}
+
+.delete-menu-form {
+    display: inline-flex;
+    margin: 0 0 0 4px;
+}
+
+.icon-button--danger {
+    color: var(--kyloffee-danger);
 }
 
 .empty-state {

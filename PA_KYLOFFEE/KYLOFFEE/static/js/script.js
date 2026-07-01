@@ -73,6 +73,10 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    function normalizeFilterValue(value) {
+        return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+    }
+
     function calculateTotals(items, discount) {
         const subtotal = items.reduce(function (sum, item) {
             return sum + item.price * item.quantity;
@@ -144,21 +148,22 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         function filterProducts() {
-            const keyword = (menuSearchInput && menuSearchInput.value ? menuSearchInput.value : "").trim().toLowerCase();
+            const keyword = normalizeFilterValue(menuSearchInput && menuSearchInput.value ? menuSearchInput.value : "");
             let visibleCount = 0;
 
             productCards.forEach(function (card) {
-                const category = card.dataset.category || "";
+                const category = normalizeFilterValue(card.dataset.category || "");
                 const searchableText = [
                     card.dataset.name || "",
-                    category,
+                    card.dataset.category || "",
                     card.dataset.description || "",
-                ].join(" ").toLowerCase();
+                ].join(" ").toLowerCase().replace(/\s+/g, " ");
                 const matchesCategory = selectedCategory === "all" || category === selectedCategory;
                 const matchesSearch = !keyword || searchableText.includes(keyword);
                 const isVisible = matchesCategory && matchesSearch;
 
                 card.hidden = !isVisible;
+                card.classList.toggle("is-hidden", !isVisible);
                 if (isVisible) visibleCount += 1;
             });
 
@@ -235,7 +240,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         root.querySelectorAll("[data-category-filter]").forEach(function (button) {
             button.addEventListener("click", function () {
-                selectedCategory = button.dataset.categoryFilter || "all";
+                selectedCategory = normalizeFilterValue(button.dataset.categoryFilter || "all") || "all";
                 root.querySelectorAll("[data-category-filter]").forEach(function (item) {
                     item.classList.toggle("is-active", item === button);
                 });

@@ -41,7 +41,13 @@
                     <div class="pos-category-scroll">
                         <button type="button" class="category-filter is-active" data-category-filter="all">All Items</button>
                         {% for category in menu_categories %}
-                            <button type="button" class="category-filter" data-category-filter="{{ category }}">{{ category }}</button>
+                            <button
+                                type="button"
+                                class="category-filter"
+                                data-category-filter="{{ category }}"
+                            >
+                                {{ category }}
+                            </button>
                         {% endfor %}
                     </div>
                 </nav>
@@ -100,8 +106,7 @@
                         </div>
                     {% else %}
                         <div class="empty-pos">
-                            <strong>Belum ada menu aktif.</strong>
-                            <p>Tambahkan menu dari halaman Owner terlebih dahulu.</p>
+                            <strong>Belum ada menu tersedia.</strong>
                         </div>
                     {% endif %}
                 </div>
