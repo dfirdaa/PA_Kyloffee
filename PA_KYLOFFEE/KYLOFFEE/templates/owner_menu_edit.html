@@ -82,12 +82,13 @@
 
                                 <div class="field-row">
                                     <div class="field-group">
-                                        <label for="code">SKU / ID Item <span>*</span></label>
-                                        <input type="text" id="code" name="code" value="{{ current_code }}" required>
+                                        <label for="code">Kode Menu</label>
+                                        <input type="text" id="code" name="code" value="{{ current_code }}" readonly class="readonly-input">
+                                        <small class="field-help">Kode dibuat otomatis dan tidak diedit manual.</small>
                                     </div>
                                     <div class="field-group">
                                         <label for="price">Harga Satuan <span>*</span></label>
-                                        <input type="number" id="price" name="price" value="{{ current_price }}" min="500" required>
+                                        <input type="number" id="price" name="price" value="{{ current_price }}" min="500" step="500" required>
                                     </div>
                                     <div class="field-group">
                                         <label for="stock">Stok Tersedia <span>*</span></label>

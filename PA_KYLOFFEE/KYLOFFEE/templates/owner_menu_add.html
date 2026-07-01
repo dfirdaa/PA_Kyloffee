@@ -71,12 +71,13 @@
 
                                 <div class="field-row">
                                     <div class="field-group">
-                                        <label for="code">SKU / ID Item <span>*</span></label>
-                                        <input type="text" id="code" name="code" value="{{ form_data.get('code', '') }}" placeholder="SIG-001" required>
+                                        <label for="codePreview">Kode Menu</label>
+                                        <input type="text" id="codePreview" value="Otomatis saat disimpan" readonly class="readonly-input">
+                                        <small class="field-help">Kode dibuat otomatis dari kategori.</small>
                                     </div>
                                     <div class="field-group">
                                         <label for="price">Harga Satuan <span>*</span></label>
-                                        <input type="number" id="price" name="price" value="{{ form_data.get('price', '') }}" placeholder="22000" min="500" required>
+                                        <input type="number" id="price" name="price" value="{{ form_data.get('price', '') }}" placeholder="22000" min="500" step="500" required>
                                     </div>
                                     <div class="field-group">
                                         <label for="stock">Stok Tersedia <span>*</span></label>

@@ -1,4 +1,5 @@
 import os
+import re
 import ssl
 import sqlite3
 import uuid
@@ -1015,9 +1016,42 @@ def build_financial_report(args=None):
 
 def parse_menu_price(price_value):
     price = int(price_value)
-    if price < MIN_MENU_PRICE:
+    if price < MIN_MENU_PRICE or price % MIN_MENU_PRICE != 0:
         raise ValueError
     return price
+
+
+def build_menu_code_prefix(category, name=""):
+    source = str(category or name or "Menu").upper()
+    cleaned = re.sub(r"[^A-Z0-9]+", " ", source).strip()
+    first_word = cleaned.split()[0] if cleaned else "MENU"
+    prefix = re.sub(r"[^A-Z0-9]", "", first_word)[:3]
+    return (prefix or "MNU").ljust(3, "X")
+
+
+def generate_menu_code(category, name=""):
+    db = get_db()
+    prefix = build_menu_code_prefix(category, name)
+    rows = fetch_all_dict(
+        db.execute(
+            "SELECT code FROM menus WHERE code LIKE ?",
+            (f"{prefix}-%",),
+        )
+    )
+    highest_number = 0
+    pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)$")
+    for row in rows:
+        match = pattern.match(str(row.get("code") or "").upper())
+        if match:
+            highest_number = max(highest_number, int(match.group(1)))
+
+    next_number = highest_number + 1
+    while True:
+        candidate = f"{prefix}-{next_number:03d}"
+        exists = db.execute("SELECT id FROM menus WHERE code = ?", (candidate,)).fetchone()
+        if not exists:
+            return candidate
+        next_number += 1
 
 
 def parse_staff_date(value):
@@ -1655,7 +1689,7 @@ def owner_menu_add():
         form_data = {
             "name": request.form.get("name", "").strip(),
             "category": request.form.get("category", "").strip(),
-            "code": request.form.get("code", "").strip().upper(),
+            "code": "",
             "price": request.form.get("price", "").strip(),
             "stock": request.form.get("stock", "").strip(),
             "description": request.form.get("description", "").strip(),
@@ -1669,15 +1703,13 @@ def owner_menu_add():
             errors.append("Kategori wajib dipilih.")
         elif not validate_menu_category(form_data["category"]):
             errors.append("Kategori tidak valid.")
-        if not form_data["code"]:
-            errors.append("SKU / ID item wajib diisi.")
         if not form_data["price"]:
             errors.append("Harga satuan wajib diisi.")
         else:
             try:
                 price = parse_menu_price(form_data["price"])
             except ValueError:
-                errors.append("Harga satuan harus berupa angka minimal Rp 500.")
+                errors.append("Harga satuan harus berupa angka minimal Rp 500 dan kelipatan Rp 500.")
                 price = None
         if not form_data["stock"]:
             errors.append("Stok wajib diisi.")
@@ -1708,6 +1740,8 @@ def owner_menu_add():
                 errors=errors,
             )
 
+        menu_code = generate_menu_code(form_data["category"], form_data["name"])
+
         execute_commit(
             """
             INSERT INTO menus (name, category, code, price, stock, description, image, is_active)
@@ -1716,7 +1750,7 @@ def owner_menu_add():
             (
                 form_data["name"],
                 form_data["category"],
-                form_data["code"],
+                menu_code,
                 price,
                 stock,
                 form_data["description"],
@@ -1752,7 +1786,7 @@ def owner_menu_edit(menu_id):
         form_data = {
             "name": request.form.get("name", "").strip(),
             "category": request.form.get("category", "").strip(),
-            "code": request.form.get("code", "").strip().upper(),
+            "code": menu["code"],
             "price": request.form.get("price", "").strip(),
             "stock": request.form.get("stock", "").strip(),
             "description": request.form.get("description", "").strip(),
@@ -1766,15 +1800,13 @@ def owner_menu_edit(menu_id):
             errors.append("Kategori wajib dipilih.")
         elif not validate_menu_category(form_data["category"]):
             errors.append("Kategori tidak valid.")
-        if not form_data["code"]:
-            errors.append("SKU / ID item wajib diisi.")
         if not form_data["price"]:
             errors.append("Harga satuan wajib diisi.")
         else:
             try:
                 price = parse_menu_price(form_data["price"])
             except ValueError:
-                errors.append("Harga satuan harus berupa angka minimal Rp 500.")
+                errors.append("Harga satuan harus berupa angka minimal Rp 500 dan kelipatan Rp 500.")
                 price = None
         if not form_data["stock"]:
             errors.append("Stok wajib diisi.")
@@ -1809,13 +1841,12 @@ def owner_menu_edit(menu_id):
         execute_commit(
             """
             UPDATE menus
-            SET name = ?, category = ?, code = ?, price = ?, stock = ?, description = ?, image = ?, is_active = ?
+            SET name = ?, category = ?, price = ?, stock = ?, description = ?, image = ?, is_active = ?
             WHERE id = ?
             """,
             (
                 form_data["name"],
                 form_data["category"],
-                form_data["code"],
                 price,
                 stock,
                 form_data["description"],
@@ -1909,10 +1940,9 @@ def add_owner_menu():
 
     name = str(data.get("name", "")).strip()
     category = str(data.get("category", "")).strip()
-    code = str(data.get("code", "")).strip().upper()
     price_value = data.get("price")
 
-    if not name or not category or not code or price_value is None:
+    if not name or not category or price_value is None:
         return jsonify({"success": False, "message": "Semua field wajib diisi."}), 400
     if not validate_menu_category(category):
         return jsonify({"success": False, "message": "Kategori tidak valid."}), 400
@@ -1920,14 +1950,15 @@ def add_owner_menu():
     try:
         price = parse_menu_price(price_value)
     except (TypeError, ValueError):
-        return jsonify({"success": False, "message": "Harga harus berupa angka minimal Rp 500."}), 400
+        return jsonify({"success": False, "message": "Harga harus berupa angka minimal Rp 500 dan kelipatan Rp 500."}), 400
 
     try:
+        code = generate_menu_code(category, name)
         execute_commit(
             "INSERT INTO menus (name, category, code, price) VALUES (?, ?, ?, ?)",
             (name, category, code, price),
         )
-        return jsonify({"success": True, "message": "Menu berhasil ditambahkan."})
+        return jsonify({"success": True, "message": "Menu berhasil ditambahkan.", "code": code})
     except Exception:
         return jsonify({"success": False, "message": "Kode menu sudah digunakan atau data tidak valid."}), 400
 
@@ -1940,10 +1971,9 @@ def update_owner_menu(menu_id):
 
     name = str(data.get("name", "")).strip()
     category = str(data.get("category", "")).strip()
-    code = str(data.get("code", "")).strip().upper()
     price_value = data.get("price")
 
-    if not name or not category or not code or price_value is None:
+    if not name or not category or price_value is None:
         return jsonify({"success": False, "message": "Semua field wajib diisi."}), 400
     if not validate_menu_category(category):
         return jsonify({"success": False, "message": "Kategori tidak valid."}), 400
@@ -1951,12 +1981,12 @@ def update_owner_menu(menu_id):
     try:
         price = parse_menu_price(price_value)
     except (TypeError, ValueError):
-        return jsonify({"success": False, "message": "Harga harus berupa angka minimal Rp 500."}), 400
+        return jsonify({"success": False, "message": "Harga harus berupa angka minimal Rp 500 dan kelipatan Rp 500."}), 400
 
     try:
         execute_commit(
-            "UPDATE menus SET name = ?, category = ?, code = ?, price = ? WHERE id = ?",
-            (name, category, code, price, menu_id),
+            "UPDATE menus SET name = ?, category = ?, price = ? WHERE id = ?",
+            (name, category, price, menu_id),
         )
         return jsonify({"success": True, "message": "Menu berhasil diperbarui."})
     except Exception:
