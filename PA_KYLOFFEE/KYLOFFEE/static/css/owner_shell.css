@@ -9,7 +9,9 @@
     --kyloffee-white: #ffffff;
     --kyloffee-danger: #b83a2f;
     --kyloffee-success: #2f7d4f;
-    --sidebar-width: 280px;
+    --sidebar-expanded-width: 264px;
+    --sidebar-collapsed-width: 80px;
+    --sidebar-width: var(--sidebar-expanded-width);
     --topbar-height: 82px;
 }
 
@@ -34,52 +36,132 @@ a {
 }
 
 .owner-page {
+    --current-sidebar-width: var(--sidebar-expanded-width);
     min-height: 100vh;
     display: flex;
+    align-items: stretch;
+    overflow-x: hidden;
+}
+
+.owner-page.owner-sidebar-collapsed {
+    --current-sidebar-width: var(--sidebar-collapsed-width);
 }
 
 .owner-sidebar {
-    position: fixed;
-    inset: 0 auto 0 0;
+    position: sticky;
+    top: 0;
     z-index: 20;
-    width: var(--sidebar-width);
+    flex: 0 0 var(--current-sidebar-width);
+    width: var(--current-sidebar-width);
+    min-width: var(--current-sidebar-width);
     min-height: 100vh;
+    height: 100vh;
     background: var(--kyloffee-cream);
-    border: 1px solid var(--kyloffee-line);
+    border-right: 1px solid var(--kyloffee-line);
     border-top-right-radius: 16px;
     border-bottom-right-radius: 16px;
-    padding: 42px 28px 34px;
+    padding: 16px 14px 24px;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    box-shadow: 8px 0 24px rgba(42, 19, 13, 0.04);
+    transition: width 0.25s ease, min-width 0.25s ease, flex-basis 0.25s ease, transform 0.25s ease;
 }
 
 .brand {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 21px;
+    gap: 12px;
+    min-height: 62px;
+    padding: 6px 8px 18px;
+    border-bottom: 1px solid rgba(222, 209, 200, 0.78);
     text-decoration: none;
     color: var(--kyloffee-text);
-    margin-bottom: 64px;
+    margin-bottom: 20px;
+    transition: justify-content 0.25s ease, padding 0.25s ease;
 }
 
 .brand-name {
-    font-size: 31px;
+    min-width: 0;
+    font-size: 27px;
     font-weight: 900;
-    letter-spacing: -1.2px;
+    letter-spacing: 0;
+    white-space: nowrap;
 }
 
 .brand-logo-mark {
-    width: 68px;
-    height: 48px;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 auto;
     object-fit: contain;
     filter: brightness(0) saturate(100%) sepia(28%) saturate(1147%) hue-rotate(333deg) brightness(51%) contrast(102%);
+}
+
+.owner-sidebar-toggle,
+.owner-mobile-toggle {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--kyloffee-line);
+    border-radius: 10px;
+    background: #fffaf6;
+    color: var(--kyloffee-brown);
+    cursor: pointer;
+    padding: 0;
+    transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.owner-sidebar-toggle:hover,
+.owner-mobile-toggle:hover {
+    border-color: var(--kyloffee-brown);
+    background: #efe5dc;
+    transform: translateY(-1px);
+}
+
+.owner-sidebar-toggle span,
+.owner-mobile-toggle span {
+    width: 20px;
+    height: 14px;
+    position: relative;
+    display: block;
+    border-top: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+}
+
+.owner-sidebar-toggle span::before,
+.owner-mobile-toggle span::before {
+    content: "";
+    position: absolute;
+    top: 4px;
+    left: 0;
+    width: 20px;
+    border-top: 2px solid currentColor;
+}
+
+.owner-sidebar-toggle {
+    align-self: flex-end;
+    margin-bottom: 4px;
+}
+
+.owner-mobile-toggle {
+    display: none;
+}
+
+.owner-sidebar-overlay {
+    display: none;
+}
+
+.owner-sidebar-overlay[hidden] {
+    display: none !important;
 }
 
 .owner-nav {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
 }
 
 .owner-nav__link,
@@ -87,18 +169,22 @@ a {
     min-height: 48px;
     display: flex;
     align-items: center;
-    gap: 13px;
+    gap: 12px;
     text-decoration: none;
     color: #443631;
-    border-radius: 11px;
-    padding: 0 18px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    padding: 0 12px;
     font-size: 15px;
-    transition: background 180ms ease, color 180ms ease;
+    font-weight: 800;
+    transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
 }
 
 .owner-nav__link:hover,
 .owner-logout:hover {
     background: #f1e7df;
+    border-color: #e0d3cb;
+    transform: translateY(-1px);
 }
 
 .owner-nav__link.active {
@@ -114,26 +200,109 @@ a {
     left: 0;
     top: 8px;
     bottom: 8px;
-    width: 8px;
+    width: 4px;
     border-radius: 0 8px 8px 0;
     background: var(--kyloffee-brown);
 }
 
 .owner-nav__icon {
-    width: 22px;
-    text-align: center;
-    font-size: 17px;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: rgba(42, 19, 13, 0.08);
     line-height: 1;
+}
+
+.owner-nav__icon svg,
+.owner-logout__icon svg {
+    width: 20px;
+    height: 20px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.owner-nav__text,
+.owner-sidebar__text,
+.owner-logout span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    transition: opacity 0.18s ease, max-width 0.25s ease, transform 0.25s ease;
 }
 
 .owner-logout {
     margin-top: auto;
 }
 
-.owner-main {
+.owner-logout__icon {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+}
+
+.owner-page.owner-sidebar-collapsed .owner-sidebar {
+    align-items: center;
+}
+
+.owner-page.owner-sidebar-collapsed .owner-sidebar-toggle {
+    align-self: center;
+}
+
+.owner-page.owner-sidebar-collapsed .brand {
     width: 100%;
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.owner-page.owner-sidebar-collapsed .owner-sidebar__text {
+    max-width: 0;
+    opacity: 0;
+    transform: translateX(-4px);
+}
+
+.owner-page.owner-sidebar-collapsed .owner-nav {
+    width: 100%;
+    align-items: center;
+}
+
+.owner-page.owner-sidebar-collapsed .owner-nav__link,
+.owner-page.owner-sidebar-collapsed .owner-logout {
+    width: 48px;
+    min-height: 48px;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+}
+
+.owner-page.owner-sidebar-collapsed .owner-nav__link.active {
+    background: var(--kyloffee-brown);
+    color: #fff;
+}
+
+.owner-page.owner-sidebar-collapsed .owner-nav__link.active::before {
+    display: none;
+}
+
+.owner-page.owner-sidebar-collapsed .owner-nav__icon {
+    background: transparent;
+}
+
+.owner-main {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
     min-height: 100vh;
-    margin-left: var(--sidebar-width);
 }
 
 .owner-topbar {
@@ -251,7 +420,7 @@ a {
     margin: 0 0 11px;
     font-size: clamp(28px, 3vw, 38px);
     line-height: 1.05;
-    letter-spacing: -1.2px;
+    letter-spacing: 0;
 }
 
 .page-subtitle {
@@ -349,12 +518,13 @@ a {
 
 @media (max-width: 980px) {
     :root {
-        --sidebar-width: 238px;
+        --sidebar-expanded-width: 244px;
+        --sidebar-collapsed-width: 76px;
     }
 
     .owner-sidebar {
-        padding-left: 20px;
-        padding-right: 20px;
+        padding-left: 12px;
+        padding-right: 12px;
     }
 
     .brand-name {
@@ -386,38 +556,57 @@ a {
     }
 }
 
-@media (max-width: 720px) {
-    .owner-page {
+@media (max-width: 760px) {
+    .owner-page,
+    .owner-page.owner-sidebar-collapsed {
+        --current-sidebar-width: 0px;
         display: block;
+        min-height: 100vh;
     }
 
     .owner-sidebar {
-        position: relative;
-        width: 100%;
-        min-height: auto;
-        border-radius: 0;
-        padding: 22px;
+        position: fixed;
+        inset: 0 auto 0 0;
+        z-index: 50;
+        width: min(280px, 84vw);
+        min-width: 0;
+        height: 100vh;
+        min-height: 100vh;
+        padding: 16px 14px 24px;
+        border-radius: 0 16px 16px 0;
+        transform: translateX(-105%);
+        box-shadow: 18px 0 40px rgba(42, 19, 13, 0.18);
     }
 
-    .brand {
-        margin-bottom: 20px;
+    .owner-page.owner-sidebar-open .owner-sidebar {
+        transform: translateX(0);
     }
 
-    .owner-nav {
-        gap: 8px;
+    .owner-sidebar-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 45;
+        display: block;
+        background: rgba(36, 18, 12, 0.36);
     }
 
-    .owner-logout {
-        margin-top: 18px;
+    .owner-mobile-toggle {
+        position: fixed;
+        top: 14px;
+        left: 14px;
+        z-index: 35;
+        display: inline-flex;
     }
 
-    .owner-main {
-        margin-left: 0;
+    .owner-sidebar-toggle {
+        align-self: flex-end;
     }
 
     .owner-topbar {
-        height: 58px;
-        justify-content: flex-start;
+        min-height: 64px;
+        height: auto;
+        justify-content: flex-end;
+        padding: 12px 20px 12px 70px;
     }
 
     .owner-topbar--spread {
@@ -425,6 +614,6 @@ a {
     }
 
     .owner-content {
-        padding: 22px;
+        padding: 22px 18px 48px;
     }
 }

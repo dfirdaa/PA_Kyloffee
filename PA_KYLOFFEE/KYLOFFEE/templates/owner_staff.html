@@ -101,8 +101,8 @@
                     <footer class="table-footer">
                         <p>Menampilkan {{ start_item }}-{{ end_item }} dari {{ total }} staf</p>
                         <div class="pagination">
-                            <a class="page-button {% if page <= 1 %}disabled{% endif %}" href="{{ url_for('owner_users', page=page-1) if page > 1 else '#' }}">&lsaquo;</a>
-                            <a class="page-button {% if page >= total_pages %}disabled{% endif %}" href="{{ url_for('owner_users', page=page+1) if page < total_pages else '#' }}">&rsaquo;</a>
+                            <a class="page-button {% if page <= 1 %}disabled{% endif %}" href="{{ url_for('owner_staff', page=page-1) if page > 1 else '#' }}">&lsaquo;</a>
+                            <a class="page-button {% if page >= total_pages %}disabled{% endif %}" href="{{ url_for('owner_staff', page=page+1) if page < total_pages else '#' }}">&rsaquo;</a>
                         </div>
                     </footer>
                 </section>

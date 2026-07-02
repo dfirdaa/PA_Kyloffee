@@ -21,7 +21,7 @@
 .form-card__header h2 {
     margin: 0;
     font-size: 21px;
-    letter-spacing: -0.3px;
+    letter-spacing: 0;
 }
 
 .form-card__body {
@@ -209,6 +209,33 @@
     line-height: 1.35;
 }
 
+.empty-category-note {
+    display: grid;
+    gap: 6px;
+    border: 1px solid #d9c9bf;
+    border-radius: 8px;
+    background: #fff8f2;
+    padding: 14px 16px;
+    color: #4b3a33;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.empty-category-note strong {
+    color: var(--kyloffee-brown);
+}
+
+.empty-category-note a {
+    width: max-content;
+    color: var(--kyloffee-brown);
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.empty-category-note a:hover {
+    text-decoration: underline;
+}
+
 .status-field {
     display: flex;
     align-items: center;
@@ -283,7 +310,7 @@
 .owner-content--staff-form .page-heading h1 {
     margin: 0 0 10px;
     font-size: 27px;
-    letter-spacing: -0.4px;
+    letter-spacing: 0;
 }
 
 .staff-form-card {

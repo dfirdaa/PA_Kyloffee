@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Category Management - Kyloffee</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu.css') }}">
+</head>
+<body>
+    <div class="owner-page">
+        {% include 'partials/owner_sidebar.html' %}
+
+        <main class="owner-main">
+            <header class="owner-topbar">
+                <div class="owner-identity">Owner : <strong>{{ owner_name }}</strong></div>
+            </header>
+
+            <section class="owner-content owner-content--categories">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="flash-stack">
+                            {% for category, message in messages %}
+                                <div class="flash flash--{{ category }}">{{ message }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                <div class="page-heading page-heading--row category-heading">
+                    <div>
+                        <p class="breadcrumb">Owner &gt; Category Management</p>
+                        <h1>Category Management</h1>
+                        <p class="page-subtitle">Kelola kategori menu yang dipakai pada Menu Management dan filter POS.</p>
+                    </div>
+
+                    <button type="button" class="primary-button category-add-button" data-open-category-modal data-mode="create">
+                        <span>+</span>
+                        Add Category
+                    </button>
+                </div>
+
+                <form action="{{ url_for('owner_categories') }}" method="GET" class="category-toolbar">
+                    <label class="category-search" for="categorySearch">
+                        <span aria-hidden="true">&#8981;</span>
+                        <input id="categorySearch" type="search" name="q" value="{{ search }}" placeholder="Search kategori" aria-label="Search kategori">
+                    </label>
+                    <button type="submit" class="secondary-button">Search</button>
+                    {% if search %}
+                        <a href="{{ url_for('owner_categories') }}" class="category-clear-link">Reset</a>
+                    {% endif %}
+                </form>
+
+                <section class="menu-table-card category-table-card" aria-label="Daftar kategori menu Kyloffee">
+                    <div class="table-responsive">
+                        <table class="menu-table category-table">
+                            <thead>
+                                <tr>
+                                    <th>Nama Kategori</th>
+                                    <th>Deskripsi</th>
+                                    <th>Jumlah Menu</th>
+                                    <th>Tanggal Dibuat</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if categories %}
+                                    {% for category in categories %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ category.name }}</strong>
+                                            </td>
+                                            <td class="category-description">
+                                                {{ category.description if category.description else '-' }}
+                                            </td>
+                                            <td>
+                                                <span class="category-count">{{ category.menu_count }} menu</span>
+                                            </td>
+                                            <td>{{ category.created_label }}</td>
+                                            <td class="action-cell">
+                                                <button
+                                                    type="button"
+                                                    class="icon-button"
+                                                    title="Edit kategori"
+                                                    data-open-category-modal
+                                                    data-mode="edit"
+                                                    data-id="{{ category.id }}"
+                                                    data-name="{{ category.name }}"
+                                                    data-description="{{ category.description }}"
+                                                >
+                                                    &#9998;
+                                                </button>
+                                                <form action="{{ url_for('owner_category_delete', category_id=category.id) }}" method="POST" class="delete-menu-form">
+                                                    <button
+                                                        type="submit"
+                                                        class="icon-button icon-button--danger"
+                                                        title="Hapus kategori"
+                                                        onclick="return confirm('Hapus kategori ini?')"
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5" class="empty-state">
+                                            <div class="empty-state__icon">
+                                                <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
+                                            </div>
+                                            <strong>Belum ada kategori.</strong>
+                                            <p>Tambahkan kategori baru untuk mengelompokkan menu.</p>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+        </main>
+
+        {% set modal_mode = category_form.get('mode', 'create') %}
+        {% set is_modal_open = category_form.get('mode') %}
+        {% set is_edit_mode = modal_mode == 'edit' %}
+        <div class="category-modal" data-category-modal {% if not is_modal_open %}hidden{% endif %}>
+            <div class="category-modal__backdrop" data-close-category-modal></div>
+            <section class="category-modal__panel" role="dialog" aria-modal="true" aria-labelledby="categoryModalTitle">
+                <header class="category-modal__header">
+                    <h2 id="categoryModalTitle">{{ 'Edit Category' if is_edit_mode else 'Add Category' }}</h2>
+                    <button type="button" class="category-modal__close" data-close-category-modal aria-label="Tutup modal">&times;</button>
+                </header>
+
+                <form
+                    method="POST"
+                    class="category-form"
+                    data-category-form
+                    data-current-id="{{ category_form.get('id', '') }}"
+                    data-create-action="{{ url_for('owner_categories') }}"
+                    data-edit-action-template="{{ url_for('owner_category_edit', category_id=0) }}"
+                    action="{{ url_for('owner_category_edit', category_id=category_form.get('id')) if is_edit_mode and category_form.get('id') else url_for('owner_categories') }}"
+                >
+                    <div class="category-form__body">
+                        <div class="field-group">
+                            <label for="categoryName">Category Name <span>*</span></label>
+                            <input
+                                type="text"
+                                id="categoryName"
+                                name="name"
+                                value="{{ category_form.get('name', '') }}"
+                                placeholder="Contoh: Coffee"
+                                required
+                                data-category-name
+                            >
+                            {% if category_form.get('errors', {}).get('name') %}
+                                <small class="field-error">{{ category_form.get('errors', {}).get('name') }}</small>
+                            {% endif %}
+                        </div>
+
+                        <div class="field-group">
+                            <label for="categoryDescription">Description</label>
+                            <textarea
+                                id="categoryDescription"
+                                name="description"
+                                placeholder="Deskripsi singkat kategori"
+                                data-category-description
+                            >{{ category_form.get('description', '') }}</textarea>
+                        </div>
+                    </div>
+
+                    <footer class="category-form__footer">
+                        <button type="button" class="secondary-button" data-close-category-modal>Batal</button>
+                        <button type="submit" class="submit-button" data-category-submit>{{ 'Simpan Perubahan' if is_edit_mode else 'Simpan Kategori' }}</button>
+                    </footer>
+                </form>
+            </section>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/owner_categories.js') }}?v=category-management-1"></script>
+</body>
+</html>

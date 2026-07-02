@@ -140,16 +140,7 @@ class DatabaseConnection:
 STAFF_INVITATION_CODE = "KYLOFFEE-STAFF"
 STAFF_DEFAULT_PASSWORD = os.getenv("STAFF_DEFAULT_PASSWORD", "kyloffee123")
 MIN_MENU_PRICE = 500
-MENU_CATEGORIES = [
-    "Coffee",
-    "Black Series",
-    "White Series",
-    "Signature Series",
-    "Non Coffee",
-    "Healthy Juice",
-    "Mocktail Series",
-    "Food",
-]
+CATEGORY_NAME_MAX_LENGTH = 100
 STAFF_POSITIONS = ["Kasir", "Barista", "Admin", "Supervisor"]
 STAFF_STATUSES = ["Aktif", "Cuti", "Nonaktif"]
 
@@ -282,6 +273,285 @@ def row_to_dict(row):
     return dict(row)
 
 
+def normalize_category_name(value):
+    return " ".join(str(value or "").strip().split())
+
+
+@app.template_global()
+def category_key(category):
+    return normalize_category_name(category).lower()
+
+
+def get_table_columns(table_name):
+    db = get_db()
+    cursor = db.cursor()
+
+    if db.is_mysql:
+        cursor.execute(f"SHOW COLUMNS FROM {table_name}")
+        fetched = cursor.fetchall()
+        return {row["Field"] if isinstance(row, dict) else row[0] for row in fetched}
+
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    return {row[1] for row in cursor.fetchall()}
+
+
+def table_exists(table_name):
+    db = get_db()
+    if db.is_mysql:
+        cursor = db.execute("SHOW TABLES LIKE ?", (table_name,))
+    else:
+        cursor = db.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        )
+    return cursor.fetchone() is not None
+
+
+def ensure_category_columns():
+    db = get_db()
+    columns = get_table_columns("categories")
+
+    if "name_key" not in columns:
+        execute_commit(
+            "ALTER TABLE categories ADD COLUMN name_key VARCHAR(255)"
+            if db.is_mysql
+            else "ALTER TABLE categories ADD COLUMN name_key TEXT"
+        )
+    if "description" not in columns:
+        execute_commit("ALTER TABLE categories ADD COLUMN description TEXT")
+    if "created_at" not in columns:
+        execute_commit(
+            "ALTER TABLE categories ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            if db.is_mysql
+            else "ALTER TABLE categories ADD COLUMN created_at TEXT"
+        )
+    if "updated_at" not in columns:
+        execute_commit(
+            "ALTER TABLE categories ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            if db.is_mysql
+            else "ALTER TABLE categories ADD COLUMN updated_at TEXT"
+        )
+
+    rows = fetch_all_dict(db.execute("SELECT id, name, name_key FROM categories"))
+    for row in rows:
+        expected_key = category_key(row.get("name"))
+        if expected_key and row.get("name_key") != expected_key:
+            execute_commit(
+                "UPDATE categories SET name_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (expected_key, row["id"]),
+            )
+
+    if db.is_mysql:
+        index_exists = db.execute(
+            "SHOW INDEX FROM categories WHERE Key_name = ?",
+            ("idx_categories_name_key",),
+        ).fetchone()
+        if not index_exists:
+            execute_commit("CREATE UNIQUE INDEX idx_categories_name_key ON categories (name_key)")
+    else:
+        execute_commit("CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name_key ON categories (name_key)")
+
+
+def init_category_table():
+    db = get_db()
+
+    if db.is_mysql:
+        execute_script_commit(
+            """
+            CREATE TABLE IF NOT EXISTS categories (
+                id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                name VARCHAR(100) NOT NULL,
+                name_key VARCHAR(255) NOT NULL UNIQUE,
+                description TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    else:
+        execute_script_commit(
+            """
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                name_key TEXT NOT NULL UNIQUE,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+
+    ensure_category_columns()
+
+
+def get_category_by_id(category_id):
+    try:
+        category_id = int(category_id)
+    except (TypeError, ValueError):
+        return None
+    if category_id < 1:
+        return None
+    return get_db().execute("SELECT * FROM categories WHERE id = ?", (category_id,)).fetchone()
+
+
+def get_category_by_name(name):
+    key = category_key(name)
+    if not key:
+        return None
+    return get_db().execute("SELECT * FROM categories WHERE name_key = ?", (key,)).fetchone()
+
+
+def get_or_create_category(name, description=None):
+    clean_name = normalize_category_name(name)
+    key = category_key(clean_name)
+    if not clean_name:
+        return None
+
+    existing = get_category_by_name(clean_name)
+    if existing:
+        return existing
+
+    try:
+        cursor = execute_commit(
+            """
+            INSERT INTO categories (name, name_key, description)
+            VALUES (?, ?, ?)
+            """,
+            (clean_name, key, description or None),
+        )
+        category_id = cursor.lastrowid
+    except Exception:
+        return get_category_by_name(clean_name)
+
+    return get_category_by_id(category_id)
+
+
+def migrate_menu_categories():
+    if not table_exists("menus"):
+        return
+
+    columns = get_table_columns("menus")
+    if "category" not in columns or "category_id" not in columns:
+        return
+
+    db = get_db()
+    menu_rows = fetch_all_dict(
+        db.execute(
+            """
+            SELECT id, category, category_id
+            FROM menus
+            WHERE category IS NOT NULL AND TRIM(category) <> ''
+            """
+        )
+    )
+
+    for menu in menu_rows:
+        existing_category = get_category_by_id(menu.get("category_id"))
+        if existing_category:
+            category_name = normalize_category_name(existing_category["name"])
+            if menu.get("category") != category_name:
+                execute_commit(
+                    "UPDATE menus SET category = ? WHERE id = ?",
+                    (category_name, menu["id"]),
+                )
+            continue
+
+        category = get_or_create_category(menu.get("category"))
+        if category:
+            execute_commit(
+                "UPDATE menus SET category_id = ?, category = ? WHERE id = ?",
+                (category["id"], category["name"], menu["id"]),
+            )
+
+
+def validate_category_payload(data, exclude_id=None):
+    name = normalize_category_name(data.get("name", ""))
+    description = str(data.get("description", "") or "").strip() or None
+    errors = {}
+
+    if not name:
+        errors["name"] = "Nama kategori wajib diisi."
+    elif len(name) > CATEGORY_NAME_MAX_LENGTH:
+        errors["name"] = f"Nama kategori maksimal {CATEGORY_NAME_MAX_LENGTH} karakter."
+    else:
+        duplicate = get_category_by_name(name)
+        if duplicate and int(duplicate["id"]) != int(exclude_id or 0):
+            errors["name"] = "Nama kategori sudah digunakan."
+
+    return {"name": name, "description": description}, errors
+
+
+def get_category_options():
+    return fetch_all_dict(
+        get_db().execute(
+            """
+            SELECT id, name, description
+            FROM categories
+            ORDER BY LOWER(name) ASC, id ASC
+            """
+        )
+    )
+
+
+def get_menu_category_from_value(category_id=None, category_name=None):
+    category = get_category_by_id(category_id)
+    if not category and category_name:
+        category = get_category_by_name(category_name)
+    return category
+
+
+def format_category_date(value):
+    value = str(value or "").strip()
+    if not value:
+        return "-"
+
+    for date_format in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            parsed = datetime.strptime(value[:19], date_format)
+            return format_short_date(parsed.date())
+        except ValueError:
+            continue
+    return value[:10]
+
+
+def fetch_category_management_rows(search=""):
+    db = get_db()
+    where_clause = ""
+    params = []
+
+    if search:
+        where_clause = "WHERE c.name LIKE ? OR COALESCE(c.description, '') LIKE ?"
+        keyword = f"%{search}%"
+        params = [keyword, keyword]
+
+    rows = fetch_all_dict(
+        db.execute(
+            f"""
+            SELECT
+                c.id,
+                c.name,
+                c.description,
+                c.created_at,
+                c.updated_at,
+                COUNT(m.id) AS menu_count
+            FROM categories c
+            LEFT JOIN menus m ON m.category_id = c.id
+            {where_clause}
+            GROUP BY c.id, c.name, c.description, c.created_at, c.updated_at
+            ORDER BY LOWER(c.name) ASC, c.id ASC
+            """,
+            params,
+        )
+    )
+
+    for row in rows:
+        row["created_label"] = format_category_date(row.get("created_at"))
+        row["description"] = row.get("description") or ""
+        row["menu_count"] = int(row.get("menu_count") or 0)
+    return rows
+
+
 @app.teardown_appcontext
 def close_db(exception=None):
     db = g.pop("db", None)
@@ -393,10 +663,27 @@ def ensure_menu_columns():
         execute_commit("ALTER TABLE menus ADD COLUMN image TEXT")
     if "is_active" not in columns:
         execute_commit("ALTER TABLE menus ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+    if "category_id" not in columns:
+        execute_commit(
+            "ALTER TABLE menus ADD COLUMN category_id BIGINT NULL"
+            if db.is_mysql
+            else "ALTER TABLE menus ADD COLUMN category_id INTEGER"
+        )
+
+    if db.is_mysql:
+        index_exists = db.execute(
+            "SHOW INDEX FROM menus WHERE Key_name = ?",
+            ("idx_menus_category_id",),
+        ).fetchone()
+        if not index_exists:
+            execute_commit("CREATE INDEX idx_menus_category_id ON menus (category_id)")
+    else:
+        execute_commit("CREATE INDEX IF NOT EXISTS idx_menus_category_id ON menus (category_id)")
 
 
 def init_menu_table():
     db = get_db()
+    init_category_table()
 
     if db.is_mysql:
         execute_script_commit(
@@ -405,6 +692,7 @@ def init_menu_table():
                 id BIGINT PRIMARY KEY AUTO_INCREMENT,
                 name VARCHAR(255) NOT NULL,
                 category VARCHAR(100) NOT NULL,
+                category_id BIGINT NULL,
                 code VARCHAR(100) NOT NULL UNIQUE,
                 price BIGINT NOT NULL,
                 stock INT NOT NULL DEFAULT 0,
@@ -430,6 +718,7 @@ def init_menu_table():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 category TEXT NOT NULL,
+                category_id INTEGER,
                 code TEXT NOT NULL UNIQUE,
                 price INTEGER NOT NULL,
                 stock INTEGER NOT NULL DEFAULT 0,
@@ -466,6 +755,8 @@ def init_menu_table():
             "INSERT INTO app_settings (key, value) VALUES (?, ?)",
             ("menus_seed_migration_done", "1"),
         )
+
+    migrate_menu_categories()
 
 
 def init_pos_tables():
@@ -635,57 +926,13 @@ def validate_auth_fields(full_name=None, email=None, password=None):
     return errors
 
 
-def validate_menu_category(category):
-    return category in MENU_CATEGORIES
-
-
-@app.template_global()
-def category_key(category):
-    return " ".join(str(category or "").strip().lower().split())
-
-
-def get_ordered_menu_categories(categories):
-    known_category_keys = {category_key(item) for item in MENU_CATEGORIES}
-    category_lookup = {}
-    for category in categories:
-        category_name = str(category or "").strip()
-        if category_name:
-            category_lookup[category_key(category_name)] = category_name
-
-    ordered_categories = [
-        category
-        for category in MENU_CATEGORIES
-        if category_key(category) in category_lookup
-    ]
-    extra_categories = sorted(
-        category
-        for key, category in category_lookup.items()
-        if key not in known_category_keys
-    )
-    return ordered_categories + extra_categories
-
-
 def get_pos_category_filters(categories):
     category_lookup = {}
     for category in categories:
-        category_name = str(category or "").strip()
+        category_name = normalize_category_name(category)
         if category_name:
             category_lookup[category_key(category_name)] = category_name
-
-    preferred_categories = ["Coffee", "Non Coffee", "Food", "Black Series"]
-    filters = []
-    used_keys = set()
-    for preferred_category in preferred_categories:
-        key = category_key(preferred_category)
-        filters.append(category_lookup.get(key, preferred_category))
-        used_keys.add(key)
-
-    extra_categories = [
-        category
-        for key, category in sorted(category_lookup.items(), key=lambda item: item[1].casefold())
-        if key not in used_keys
-    ]
-    return filters + extra_categories
+    return [category for _, category in sorted(category_lookup.items(), key=lambda item: item[1].casefold())]
 
 
 def format_report_datetime(value):
@@ -1658,9 +1905,19 @@ def owner_menu():
     total = fetch_scalar(db.execute("SELECT COUNT(*) FROM menus"))
     menus = db.execute(
         """
-        SELECT id, name, category, code, price, stock, image, is_active
-        FROM menus
-        ORDER BY id DESC
+        SELECT
+            m.id,
+            m.name,
+            COALESCE(c.name, m.category) AS category,
+            m.category_id,
+            m.code,
+            m.price,
+            m.stock,
+            m.image,
+            m.is_active
+        FROM menus m
+        LEFT JOIN categories c ON c.id = m.category_id
+        ORDER BY m.id DESC
         LIMIT ? OFFSET ?
         """,
         (per_page, offset),
@@ -1671,7 +1928,6 @@ def owner_menu():
         "owner_menu.html",
         owner_name=get_owner_name(),
         active_page="menu",
-        menu_categories=MENU_CATEGORIES,
         menus=menus,
         page=page,
         total_pages=total_pages,
@@ -1684,24 +1940,28 @@ def owner_menu():
 @owner_required
 def owner_menu_add():
     init_menu_table()
+    category_options = get_category_options()
 
     if request.method == "POST":
         form_data = {
             "name": request.form.get("name", "").strip(),
-            "category": request.form.get("category", "").strip(),
+            "category_id": request.form.get("category_id", "").strip(),
             "code": "",
             "price": request.form.get("price", "").strip(),
             "stock": request.form.get("stock", "").strip(),
             "description": request.form.get("description", "").strip(),
             "is_active": request.form.get("is_active", "1") == "1",
         }
+        selected_category = get_menu_category_from_value(form_data["category_id"])
 
         errors = []
         if not form_data["name"]:
             errors.append("Nama item wajib diisi.")
-        if not form_data["category"]:
+        if not category_options:
+            errors.append("Belum ada kategori. Tambahkan kategori terlebih dahulu.")
+        elif not form_data["category_id"]:
             errors.append("Kategori wajib dipilih.")
-        elif not validate_menu_category(form_data["category"]):
+        elif not selected_category:
             errors.append("Kategori tidak valid.")
         if not form_data["price"]:
             errors.append("Harga satuan wajib diisi.")
@@ -1735,21 +1995,23 @@ def owner_menu_add():
                 "owner_menu_add.html",
                 owner_name=get_owner_name(),
                 active_page="menu",
-                menu_categories=MENU_CATEGORIES,
+                category_options=category_options,
                 form_data=form_data,
                 errors=errors,
             )
 
-        menu_code = generate_menu_code(form_data["category"], form_data["name"])
+        category_name = selected_category["name"]
+        menu_code = generate_menu_code(category_name, form_data["name"])
 
         execute_commit(
             """
-            INSERT INTO menus (name, category, code, price, stock, description, image, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO menus (name, category, category_id, code, price, stock, description, image, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 form_data["name"],
-                form_data["category"],
+                category_name,
+                selected_category["id"],
                 menu_code,
                 price,
                 stock,
@@ -1765,7 +2027,7 @@ def owner_menu_add():
         "owner_menu_add.html",
         owner_name=get_owner_name(),
         active_page="menu",
-        menu_categories=MENU_CATEGORIES,
+        category_options=category_options,
         form_data={},
         errors=[],
     )
@@ -1776,29 +2038,42 @@ def owner_menu_add():
 def owner_menu_edit(menu_id):
     init_menu_table()
     db = get_db()
-    menu = db.execute("SELECT * FROM menus WHERE id = ?", (menu_id,)).fetchone()
+    menu = db.execute(
+        """
+        SELECT m.*, COALESCE(c.name, m.category) AS category_name
+        FROM menus m
+        LEFT JOIN categories c ON c.id = m.category_id
+        WHERE m.id = ?
+        """,
+        (menu_id,),
+    ).fetchone()
 
     if menu is None:
         flash("Menu tidak ditemukan.", "error")
         return redirect(url_for("owner_menu"))
 
+    category_options = get_category_options()
+
     if request.method == "POST":
         form_data = {
             "name": request.form.get("name", "").strip(),
-            "category": request.form.get("category", "").strip(),
+            "category_id": request.form.get("category_id", "").strip(),
             "code": menu["code"],
             "price": request.form.get("price", "").strip(),
             "stock": request.form.get("stock", "").strip(),
             "description": request.form.get("description", "").strip(),
             "is_active": request.form.get("is_active", "1") == "1",
         }
+        selected_category = get_menu_category_from_value(form_data["category_id"])
 
         errors = []
         if not form_data["name"]:
             errors.append("Nama item wajib diisi.")
-        if not form_data["category"]:
+        if not category_options:
+            errors.append("Belum ada kategori. Tambahkan kategori terlebih dahulu.")
+        elif not form_data["category_id"]:
             errors.append("Kategori wajib dipilih.")
-        elif not validate_menu_category(form_data["category"]):
+        elif not selected_category:
             errors.append("Kategori tidak valid.")
         if not form_data["price"]:
             errors.append("Harga satuan wajib diisi.")
@@ -1832,21 +2107,23 @@ def owner_menu_edit(menu_id):
                 "owner_menu_edit.html",
                 owner_name=get_owner_name(),
                 active_page="menu",
-                menu_categories=MENU_CATEGORIES,
+                category_options=category_options,
                 menu=dict(menu),
                 form_data=form_data,
                 errors=errors,
             )
 
+        category_name = selected_category["name"]
         execute_commit(
             """
             UPDATE menus
-            SET name = ?, category = ?, price = ?, stock = ?, description = ?, image = ?, is_active = ?
+            SET name = ?, category = ?, category_id = ?, price = ?, stock = ?, description = ?, image = ?, is_active = ?
             WHERE id = ?
             """,
             (
                 form_data["name"],
-                form_data["category"],
+                category_name,
+                selected_category["id"],
                 price,
                 stock,
                 form_data["description"],
@@ -1862,7 +2139,7 @@ def owner_menu_edit(menu_id):
         "owner_menu_edit.html",
         owner_name=get_owner_name(),
         active_page="menu",
-        menu_categories=MENU_CATEGORIES,
+        category_options=category_options,
         menu=dict(menu),
         form_data={},
         errors=[],
@@ -1885,6 +2162,230 @@ def owner_menu_delete(menu_id):
     return redirect(url_for("owner_menu"))
 
 
+def render_owner_categories(category_form=None):
+    init_menu_table()
+    search = request.args.get("q", "").strip()
+    return render_template(
+        "owner_categories.html",
+        owner_name=get_owner_name(),
+        active_page="categories",
+        categories=fetch_category_management_rows(search),
+        search=search,
+        category_form=category_form or {},
+    )
+
+
+@app.route("/owner/categories", methods=["GET", "POST"])
+@owner_required
+def owner_categories():
+    init_menu_table()
+
+    if request.method == "POST":
+        payload, errors = validate_category_payload(request.form)
+        if errors:
+            return render_owner_categories(
+                {
+                    "mode": "create",
+                    "name": payload["name"],
+                    "description": payload["description"] or "",
+                    "errors": errors,
+                }
+            )
+
+        try:
+            execute_commit(
+                """
+                INSERT INTO categories (name, name_key, description)
+                VALUES (?, ?, ?)
+                """,
+                (payload["name"], category_key(payload["name"]), payload["description"]),
+            )
+        except Exception:
+            return render_owner_categories(
+                {
+                    "mode": "create",
+                    "name": payload["name"],
+                    "description": payload["description"] or "",
+                    "errors": {"name": "Nama kategori sudah digunakan."},
+                }
+            )
+
+        flash("Kategori berhasil ditambahkan.", "success")
+        return redirect(url_for("owner_categories"))
+
+    return render_owner_categories()
+
+
+@app.route("/owner/categories/<int:category_id>/edit", methods=["POST"])
+@owner_required
+def owner_category_edit(category_id):
+    init_menu_table()
+    category = get_category_by_id(category_id)
+
+    if category is None:
+        flash("Kategori tidak ditemukan.", "error")
+        return redirect(url_for("owner_categories"))
+
+    payload, errors = validate_category_payload(request.form, exclude_id=category_id)
+    if errors:
+        return render_owner_categories(
+            {
+                "mode": "edit",
+                "id": category_id,
+                "name": payload["name"],
+                "description": payload["description"] or "",
+                "errors": errors,
+            }
+        )
+
+    try:
+        execute_commit(
+            """
+            UPDATE categories
+            SET name = ?, name_key = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (payload["name"], category_key(payload["name"]), payload["description"], category_id),
+        )
+        execute_commit("UPDATE menus SET category = ? WHERE category_id = ?", (payload["name"], category_id))
+    except Exception:
+        return render_owner_categories(
+            {
+                "mode": "edit",
+                "id": category_id,
+                "name": payload["name"],
+                "description": payload["description"] or "",
+                "errors": {"name": "Nama kategori sudah digunakan."},
+            }
+        )
+
+    flash("Kategori berhasil diperbarui.", "success")
+    return redirect(url_for("owner_categories"))
+
+
+@app.route("/owner/categories/<int:category_id>/delete", methods=["POST"])
+@owner_required
+def owner_category_delete(category_id):
+    init_menu_table()
+    category = get_category_by_id(category_id)
+
+    if category is None:
+        flash("Kategori tidak ditemukan.", "error")
+        return redirect(url_for("owner_categories"))
+
+    menu_count = fetch_scalar(
+        get_db().execute("SELECT COUNT(*) FROM menus WHERE category_id = ?", (category_id,))
+    ) or 0
+    if menu_count > 0:
+        flash(
+            f"Kategori ini masih digunakan oleh {menu_count} menu. Pindahkan menu ke kategori lain sebelum menghapus kategori.",
+            "error",
+        )
+        return redirect(url_for("owner_categories"))
+
+    execute_commit("DELETE FROM categories WHERE id = ?", (category_id,))
+    flash("Kategori berhasil dihapus.", "success")
+    return redirect(url_for("owner_categories"))
+
+
+@app.route("/api/owner/categories", methods=["GET"])
+@owner_required
+def get_owner_categories():
+    init_menu_table()
+    search = request.args.get("q", "").strip()
+    return jsonify({"success": True, "categories": fetch_category_management_rows(search)})
+
+
+@app.route("/api/owner/categories", methods=["POST"])
+@owner_required
+def add_owner_category():
+    init_menu_table()
+    data = request.get_json(silent=True) or {}
+    payload, errors = validate_category_payload(data)
+
+    if errors:
+        return jsonify({"success": False, "message": next(iter(errors.values())), "errors": errors}), 400
+
+    try:
+        cursor = execute_commit(
+            """
+            INSERT INTO categories (name, name_key, description)
+            VALUES (?, ?, ?)
+            """,
+            (payload["name"], category_key(payload["name"]), payload["description"]),
+        )
+        category = get_category_by_id(cursor.lastrowid)
+    except Exception:
+        return jsonify({"success": False, "message": "Nama kategori sudah digunakan."}), 400
+
+    return jsonify(
+        {
+            "success": True,
+            "message": "Kategori berhasil ditambahkan.",
+            "category": row_to_dict(category),
+        }
+    )
+
+
+@app.route("/api/owner/categories/<int:category_id>", methods=["PUT", "PATCH"])
+@owner_required
+def update_owner_category(category_id):
+    init_menu_table()
+    category = get_category_by_id(category_id)
+    if category is None:
+        return jsonify({"success": False, "message": "Kategori tidak ditemukan."}), 404
+
+    data = request.get_json(silent=True) or {}
+    payload, errors = validate_category_payload(data, exclude_id=category_id)
+
+    if errors:
+        return jsonify({"success": False, "message": next(iter(errors.values())), "errors": errors}), 400
+
+    try:
+        execute_commit(
+            """
+            UPDATE categories
+            SET name = ?, name_key = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (payload["name"], category_key(payload["name"]), payload["description"], category_id),
+        )
+        execute_commit("UPDATE menus SET category = ? WHERE category_id = ?", (payload["name"], category_id))
+    except Exception:
+        return jsonify({"success": False, "message": "Nama kategori sudah digunakan."}), 400
+
+    return jsonify(
+        {
+            "success": True,
+            "message": "Kategori berhasil diperbarui.",
+            "category": row_to_dict(get_category_by_id(category_id)),
+        }
+    )
+
+
+@app.route("/api/owner/categories/<int:category_id>", methods=["DELETE"])
+@owner_required
+def delete_owner_category(category_id):
+    init_menu_table()
+    category = get_category_by_id(category_id)
+    if category is None:
+        return jsonify({"success": False, "message": "Kategori tidak ditemukan."}), 404
+
+    menu_count = fetch_scalar(
+        get_db().execute("SELECT COUNT(*) FROM menus WHERE category_id = ?", (category_id,))
+    ) or 0
+    if menu_count > 0:
+        return jsonify(
+            {
+                "success": False,
+                "message": f"Kategori ini masih digunakan oleh {menu_count} menu. Pindahkan menu ke kategori lain sebelum menghapus kategori.",
+            }
+        ), 400
+
+    execute_commit("DELETE FROM categories WHERE id = ?", (category_id,))
+    return jsonify({"success": True, "message": "Kategori berhasil dihapus."})
+
+
 @app.route("/api/owner/menus", methods=["GET"])
 @owner_required
 def get_owner_menus():
@@ -1894,26 +2395,49 @@ def get_owner_menus():
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 6, type=int)
     search = request.args.get("q", "").strip()
+    category_id = request.args.get("category_id", type=int)
 
     if page < 1:
         page = 1
 
     offset = (page - 1) * per_page
-    where_clause = ""
+    where_parts = []
     params = []
 
     if search:
-        where_clause = " WHERE name LIKE ? OR category LIKE ? OR code LIKE ?"
+        where_parts.append("(m.name LIKE ? OR COALESCE(c.name, m.category) LIKE ? OR m.code LIKE ?)")
         keyword = f"%{search}%"
-        params = [keyword, keyword, keyword]
+        params.extend([keyword, keyword, keyword])
 
-    total = fetch_scalar(db.execute(f"SELECT COUNT(*) FROM menus {where_clause}", params))
+    if category_id:
+        where_parts.append("m.category_id = ?")
+        params.append(category_id)
+
+    where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+    total = fetch_scalar(
+        db.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM menus m
+            LEFT JOIN categories c ON c.id = m.category_id
+            {where_clause}
+            """,
+            params,
+        )
+    )
     cursor = db.execute(
         f"""
-        SELECT id, name, category, code, price
-        FROM menus
+        SELECT
+            m.id,
+            m.name,
+            m.category_id,
+            COALESCE(c.name, m.category) AS category,
+            m.code,
+            m.price
+        FROM menus m
+        LEFT JOIN categories c ON c.id = m.category_id
         {where_clause}
-        ORDER BY id ASC
+        ORDER BY m.id ASC
         LIMIT ? OFFSET ?
         """,
         params + [per_page, offset],
@@ -1939,13 +2463,11 @@ def add_owner_menu():
     data = request.get_json(silent=True) or {}
 
     name = str(data.get("name", "")).strip()
-    category = str(data.get("category", "")).strip()
+    category = get_menu_category_from_value(data.get("category_id"), data.get("category"))
     price_value = data.get("price")
 
     if not name or not category or price_value is None:
         return jsonify({"success": False, "message": "Semua field wajib diisi."}), 400
-    if not validate_menu_category(category):
-        return jsonify({"success": False, "message": "Kategori tidak valid."}), 400
 
     try:
         price = parse_menu_price(price_value)
@@ -1953,10 +2475,11 @@ def add_owner_menu():
         return jsonify({"success": False, "message": "Harga harus berupa angka minimal Rp 500 dan kelipatan Rp 500."}), 400
 
     try:
-        code = generate_menu_code(category, name)
+        category_name = category["name"]
+        code = generate_menu_code(category_name, name)
         execute_commit(
-            "INSERT INTO menus (name, category, code, price) VALUES (?, ?, ?, ?)",
-            (name, category, code, price),
+            "INSERT INTO menus (name, category, category_id, code, price) VALUES (?, ?, ?, ?, ?)",
+            (name, category_name, category["id"], code, price),
         )
         return jsonify({"success": True, "message": "Menu berhasil ditambahkan.", "code": code})
     except Exception:
@@ -1970,13 +2493,11 @@ def update_owner_menu(menu_id):
     data = request.get_json(silent=True) or {}
 
     name = str(data.get("name", "")).strip()
-    category = str(data.get("category", "")).strip()
+    category = get_menu_category_from_value(data.get("category_id"), data.get("category"))
     price_value = data.get("price")
 
     if not name or not category or price_value is None:
         return jsonify({"success": False, "message": "Semua field wajib diisi."}), 400
-    if not validate_menu_category(category):
-        return jsonify({"success": False, "message": "Kategori tidak valid."}), 400
 
     try:
         price = parse_menu_price(price_value)
@@ -1984,9 +2505,10 @@ def update_owner_menu(menu_id):
         return jsonify({"success": False, "message": "Harga harus berupa angka minimal Rp 500 dan kelipatan Rp 500."}), 400
 
     try:
+        category_name = category["name"]
         execute_commit(
-            "UPDATE menus SET name = ?, category = ?, price = ? WHERE id = ?",
-            (name, category, price, menu_id),
+            "UPDATE menus SET name = ?, category = ?, category_id = ?, price = ? WHERE id = ?",
+            (name, category_name, category["id"], price, menu_id),
         )
         return jsonify({"success": True, "message": "Menu berhasil diperbarui."})
     except Exception:
@@ -2063,6 +2585,12 @@ def owner_users():
     )
 
 
+@app.route("/owner/staff")
+@owner_required
+def owner_staff():
+    return owner_users()
+
+
 @app.route("/owner/users/add", methods=["GET", "POST"])
 @owner_required
 def owner_users_add():
@@ -2114,7 +2642,7 @@ def owner_users_add():
             )
 
         flash(f"Staff berhasil ditambahkan. Password awal: {STAFF_DEFAULT_PASSWORD}", "success")
-        return redirect(url_for("owner_users"))
+        return redirect(url_for("owner_staff"))
 
     return render_template(
         "owner_staff_add.html",
@@ -2142,7 +2670,7 @@ def owner_users_edit(staff_id):
 
     if staff is None:
         flash("Data staff tidak ditemukan.", "error")
-        return redirect(url_for("owner_users"))
+        return redirect(url_for("owner_staff"))
 
     staff_data = format_staff_member(staff)
 
@@ -2195,7 +2723,7 @@ def owner_users_edit(staff_id):
             )
 
         flash("Data staff berhasil diperbarui.", "success")
-        return redirect(url_for("owner_users"))
+        return redirect(url_for("owner_staff"))
 
     return render_template(
         "owner_staff_edit.html",
@@ -2223,10 +2751,21 @@ def pos():
     db = get_db()
     products = db.execute(
         """
-        SELECT id, name, description, price, image, stock, category, code, is_active
-        FROM menus
-        WHERE is_active = 1
-        ORDER BY id DESC
+        SELECT
+            m.id,
+            m.name,
+            m.description,
+            m.price,
+            m.image,
+            m.stock,
+            COALESCE(c.name, m.category) AS category,
+            m.category_id,
+            m.code,
+            m.is_active
+        FROM menus m
+        LEFT JOIN categories c ON c.id = m.category_id
+        WHERE m.is_active = 1
+        ORDER BY m.id DESC
         """
     ).fetchall()
     products = [dict(product) for product in products]

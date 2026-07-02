@@ -33,7 +33,7 @@
                 {% endif %}
 
                 {% set current_name = form_data.get('name') if form_data else menu.name %}
-                {% set current_category = form_data.get('category') if form_data else menu.category %}
+                {% set current_category_id = form_data.get('category_id') if form_data else menu.category_id %}
                 {% set current_code = form_data.get('code') if form_data else menu.code %}
                 {% set current_price = form_data.get('price') if form_data else menu.price %}
                 {% set current_stock = form_data.get('stock') if form_data else menu.stock %}
@@ -72,12 +72,21 @@
                                 </div>
 
                                 <div class="field-group field-group--full">
-                                    <label for="category">Kategori <span>*</span></label>
-                                    <select id="category" name="category" required>
-                                        {% for category in menu_categories %}
-                                            <option value="{{ category }}" {% if current_category == category %}selected{% endif %}>{{ category }}</option>
-                                        {% endfor %}
-                                    </select>
+                                    <label for="category_id">Kategori <span>*</span></label>
+                                    {% if category_options %}
+                                        <select id="category_id" name="category_id" required>
+                                            <option value="">Pilih kategori</option>
+                                            {% for category in category_options %}
+                                                <option value="{{ category.id }}" {% if current_category_id|string == category.id|string %}selected{% endif %}>{{ category.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    {% else %}
+                                        <div class="empty-category-note">
+                                            <strong>Belum ada kategori.</strong>
+                                            <span>Tambahkan kategori terlebih dahulu.</span>
+                                            <a href="{{ url_for('owner_categories') }}">Buka Category Management</a>
+                                        </div>
+                                    {% endif %}
                                 </div>
 
                                 <div class="field-row">
