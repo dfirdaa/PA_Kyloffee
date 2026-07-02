@@ -6,27 +6,47 @@
     data-pos-cart
     data-payment-url="{{ url_for('pos_payment') }}"
 >
-    <aside class="pos-sidebar-mock">
+    <aside class="pos-sidebar-mock" id="posSidebar" data-pos-sidebar>
+        <button
+            type="button"
+            class="pos-sidebar-toggle"
+            data-pos-sidebar-toggle
+            aria-controls="posSidebar"
+            aria-expanded="true"
+            aria-label="Tutup sidebar POS"
+        >
+            <span></span>
+        </button>
         <a href="{{ url_for('pos') }}" class="pos-sidebar-brand" aria-label="Kyloffee POS">
-            <span>Kyloffee</span>
-            <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
+            <img class="pos-sidebar-brand-logo" src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
+            <span class="pos-sidebar-brand-text">Kyloffee</span>
         </a>
 
         <nav class="pos-sidebar-nav" aria-label="POS navigation">
-            <a href="{{ url_for('pos') }}" class="active">
-                <span aria-hidden="true">&#9635;</span>
-                <strong>Order Input</strong>
+            <a href="{{ url_for('pos') }}" class="pos-sidebar-nav-link active">
+                <span class="pos-sidebar-nav-icon" aria-hidden="true">&#9635;</span>
+                <strong class="pos-sidebar-nav-text">Order Input</strong>
             </a>
         </nav>
 
         <a href="{{ url_for('logout') }}" class="pos-sidebar-logout">
-            <span aria-hidden="true">&larr;</span>
-            Log Out
+            <span class="pos-sidebar-logout-icon" aria-hidden="true">&larr;</span>
+            <span class="pos-sidebar-logout-text">Log Out</span>
         </a>
     </aside>
 
     <section class="pos-workspace-mock">
         <header class="pos-topbar-mock">
+            <button
+                type="button"
+                class="pos-topbar-sidebar-toggle"
+                data-pos-sidebar-toggle
+                aria-controls="posSidebar"
+                aria-expanded="true"
+                aria-label="Buka sidebar POS"
+            >
+                <span></span>
+            </button>
             <h1>Kyloffee POS</h1>
             <label class="pos-search-mock">
                 <input type="search" data-menu-search placeholder="Cari menu, kategori, deskripsi" aria-label="Cari menu">

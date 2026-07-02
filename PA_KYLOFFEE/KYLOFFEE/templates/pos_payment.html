@@ -8,10 +8,14 @@
     data-checkout-url="{{ url_for('pos_checkout') }}"
     data-qris-url="{{ url_for('pos_qris_payload') }}"
 >
+    <a href="{{ url_for('pos') }}" class="payment-page-back" data-payment-back aria-label="Kembali ke POS">
+        <span aria-hidden="true">&larr;</span>
+        <strong>Kembali</strong>
+    </a>
+
     <section class="payment-page__shell">
         <aside class="payment-order-summary">
             <header>
-                <a href="{{ url_for('pos') }}" class="payment-back-link" data-payment-back>&larr; Back to POS</a>
                 <p class="payment-eyebrow">Current Order</p>
                 <h1>Order Summary</h1>
                 <span>Shift : {{ shift }} Staff: {{ staff_name }}</span>
@@ -50,7 +54,6 @@
                     <span class="payment-eyebrow">Payment</span>
                     <h2>Complete Order</h2>
                 </div>
-                <a href="{{ url_for('pos') }}" class="payment-close-button" data-payment-back aria-label="Kembali ke POS">x</a>
             </header>
 
             <div class="pos-payment-form pos-payment-form--page">

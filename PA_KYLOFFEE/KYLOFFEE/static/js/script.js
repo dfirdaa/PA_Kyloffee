@@ -13,6 +13,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     const stateKey = "kyloffee_pos_cart_v2";
+    const sidebarStateKey = "kyloffee_pos_sidebar_open";
 
     function readState() {
         try {
@@ -107,6 +108,14 @@ document.addEventListener("DOMContentLoaded", function () {
         box.className = "pos-message";
     }
 
+    function readSidebarState() {
+        if (window.matchMedia("(max-width: 760px)").matches) return false;
+        const saved = localStorage.getItem(sidebarStateKey);
+        if (saved === "0") return false;
+        if (saved === "1") return true;
+        return true;
+    }
+
     function initPosPage(root) {
         const cart = new Map();
         const storedState = readState();
@@ -135,6 +144,67 @@ document.addEventListener("DOMContentLoaded", function () {
         const summaryTotalLabels = root.querySelectorAll("[data-summary-total]");
         const productCards = Array.from(root.querySelectorAll("[data-product-card]"));
         const menuEmpty = root.querySelector("[data-menu-empty]");
+        const sidebar = root.querySelector("[data-pos-sidebar]");
+        const sidebarNavLinks = root.querySelectorAll(".pos-sidebar-nav-link");
+        const sidebarLogout = root.querySelector(".pos-sidebar-logout");
+        const sidebarToggleButtons = root.querySelectorAll("[data-pos-sidebar-toggle]");
+        const mobileSidebarQuery = window.matchMedia("(max-width: 760px)");
+        let isSidebarOpen = readSidebarState();
+
+        function setSidebarOpen(nextState, options) {
+            const shouldPersist = !options || options.persist !== false;
+            const isMobileLayout = mobileSidebarQuery.matches;
+            isSidebarOpen = Boolean(nextState);
+            root.classList.toggle("is-sidebar-collapsed", !isSidebarOpen);
+            root.classList.toggle("is-sidebar-open", isSidebarOpen);
+            root.dataset.sidebarState = isSidebarOpen ? "expanded" : "collapsed";
+
+            if (sidebar) {
+                sidebar.classList.toggle("pos-sidebar-mock--expanded", isSidebarOpen);
+                sidebar.classList.toggle("pos-sidebar-mock--collapsed", !isSidebarOpen);
+            }
+
+            sidebarNavLinks.forEach(function (link) {
+                link.classList.toggle("pos-sidebar-nav-link--expanded", isSidebarOpen);
+                link.classList.toggle("pos-sidebar-nav-link--collapsed", !isSidebarOpen);
+            });
+
+            if (sidebarLogout) {
+                sidebarLogout.classList.toggle("pos-sidebar-logout--expanded", isSidebarOpen);
+                sidebarLogout.classList.toggle("pos-sidebar-logout--collapsed", !isSidebarOpen);
+            }
+
+            if (shouldPersist && !isMobileLayout) {
+                localStorage.setItem(sidebarStateKey, isSidebarOpen ? "1" : "0");
+            }
+
+            sidebarToggleButtons.forEach(function (button) {
+                button.setAttribute("aria-expanded", String(isSidebarOpen));
+                button.setAttribute("aria-label", isSidebarOpen ? "Tutup sidebar POS" : "Buka sidebar POS");
+            });
+        }
+
+        sidebarToggleButtons.forEach(function (button) {
+            button.addEventListener("click", function () {
+                setSidebarOpen(!isSidebarOpen);
+            });
+        });
+
+        function handleSidebarViewportChange(event) {
+            setSidebarOpen(event.matches ? false : readSidebarState(), { persist: false });
+        }
+
+        if (mobileSidebarQuery.addEventListener) {
+            mobileSidebarQuery.addEventListener("change", handleSidebarViewportChange);
+        } else if (mobileSidebarQuery.addListener) {
+            mobileSidebarQuery.addListener(handleSidebarViewportChange);
+        }
+
+        root.addEventListener("click", function (event) {
+            if (mobileSidebarQuery.matches && isSidebarOpen && event.target === root) {
+                setSidebarOpen(false);
+            }
+        });
 
         function currentItems() {
             return Array.from(cart.values());
@@ -283,6 +353,7 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         }
 
+        setSidebarOpen(isSidebarOpen);
         renderCart();
     }
 
