@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Perbarui Staff - Kyloffee</title>
+    <title>Perbarui Kasir - Kyloffee</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu_form.css') }}">
 </head>
@@ -18,9 +18,9 @@
 
             <section class="owner-content owner-content--form owner-content--staff-form">
                 <div class="page-heading">
-                    <p class="breadcrumb">Manajemen Staff &gt; Perbarui Data Staf</p>
-                    <h1>Perbarui Data Staf</h1>
-                    <p class="page-subtitle">Edit informasi administratif untuk staf yang dipilih.</p>
+                    <p class="breadcrumb">Manajemen Kasir &gt; Perbarui Data Kasir</p>
+                    <h1>Perbarui Data Kasir</h1>
+                    <p class="page-subtitle">Edit informasi administratif untuk kasir yang dipilih.</p>
                 </div>
 
                 {% if errors %}
@@ -34,7 +34,7 @@
                 {% set current_name = form_data.get('full_name') if form_data else staff.full_name %}
                 {% set current_email = form_data.get('email') if form_data else staff.email %}
                 {% set current_phone = form_data.get('staff_phone') if form_data else staff.phone_value %}
-                {% set current_position = form_data.get('staff_position') if form_data else staff.position %}
+                {% set current_position = 'Kasir' %}
                 {% set current_joined = form_data.get('joined_date') if form_data else staff.joined_date_value %}
                 {% set current_status = form_data.get('staff_status') if form_data else staff.status %}
                 {% set current_active = form_data.get('is_active') if form_data else staff.is_active %}
@@ -59,14 +59,11 @@
                                     <input type="tel" id="staff_phone" name="staff_phone" value="{{ current_phone }}" required>
                                 </div>
                                 <div class="field-group">
-                                    <label for="staff_position">Peran</label>
+                                    <label for="staff_position">Role</label>
                                     <select id="staff_position" name="staff_position" required>
                                         {% for position in staff_positions %}
                                             <option value="{{ position }}" {% if current_position == position %}selected{% endif %}>{{ position }}</option>
                                         {% endfor %}
-                                        {% if current_position and current_position not in staff_positions %}
-                                            <option value="{{ current_position }}" selected>{{ current_position }}</option>
-                                        {% endif %}
                                     </select>
                                 </div>
                             </div>

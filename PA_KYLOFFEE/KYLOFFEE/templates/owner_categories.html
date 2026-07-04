@@ -90,16 +90,6 @@
                                                 >
                                                     &#9998;
                                                 </button>
-                                                <form action="{{ url_for('owner_category_delete', category_id=category.id) }}" method="POST" class="delete-menu-form">
-                                                    <button
-                                                        type="submit"
-                                                        class="icon-button icon-button--danger"
-                                                        title="Hapus kategori"
-                                                        onclick="return confirm('Hapus kategori ini?')"
-                                                    >
-                                                        &times;
-                                                    </button>
-                                                </form>
                                             </td>
                                         </tr>
                                     {% endfor %}

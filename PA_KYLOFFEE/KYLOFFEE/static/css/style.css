@@ -30,7 +30,7 @@ a { color: inherit; }
 
 .opening-page {
     align-items: flex-start;
-    padding: clamp(150px, 26vh, 268px) 24px 70px;
+    padding: clamp(120px, 22vh, 220px) 24px 70px;
     color: var(--white);
 }
 
@@ -48,59 +48,72 @@ a { color: inherit; }
 }
 
 .opening-copy p {
-    margin: 11px 0 clamp(88px, 13.6vh, 139px);
+    max-width: 720px;
+    margin: 14px auto clamp(58px, 9vh, 96px);
     color: var(--white);
     font-size: 26px;
-    line-height: 1.12;
+    line-height: 1.25;
     font-weight: 400;
 }
 
 .role-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 520px));
-    gap: 47px;
+    gap: 32px;
     justify-content: center;
+    align-items: stretch;
 }
 
 .role-card {
     display: flex;
-    align-items: flex-end;
+    align-items: stretch;
     justify-content: space-between;
-    min-height: 188px;
-    padding: 28px 20px 21px 35px;
-    border: 0;
-    border-radius: 27px;
+    min-height: 212px;
+    height: 100%;
+    padding: 32px;
+    border: 1px solid rgba(255, 255, 255, .74);
+    border-radius: 24px;
     text-decoration: none;
     text-align: left;
     background: var(--white);
     color: var(--brown);
-    transition: .2s ease;
+    cursor: pointer;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, .08);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
 }
 
-.role-card:hover { transform: translateY(-3px); }
+.role-card:hover {
+    transform: translateY(-5px);
+    border-color: #dfcfc2;
+    background: #fffaf6;
+    box-shadow: 0 20px 42px rgba(0, 0, 0, .16);
+}
 
 .role-copy {
     display: grid;
-    gap: 15px;
+    align-content: start;
+    gap: 18px;
+    min-width: 0;
 }
 
 .role-card strong {
-    font-size: 51px;
-    line-height: .9;
+    font-size: 46px;
+    line-height: 1;
     font-weight: 900;
 }
 
 .role-card small {
     color: var(--brown);
-    font-size: 25px;
-    line-height: .98;
+    font-size: 22px;
+    line-height: 1.24;
 }
 
 .role-arrow {
     flex: 0 0 auto;
-    margin-left: 14px;
-    font-size: 48px;
-    line-height: .8;
+    align-self: flex-end;
+    margin-left: 18px;
+    font-size: 42px;
+    line-height: 1;
 }
 
 .opening-login-row {
@@ -114,16 +127,28 @@ a { color: inherit; }
 }
 
 .opening-login-row a {
-    width: 292px;
-    min-height: 29px;
+    min-width: 118px;
+    min-height: 44px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: var(--white);
+    padding: 0 28px;
+    border: 1px solid rgba(255, 255, 255, .68);
+    border-radius: 999px;
+    background: var(--cream);
     color: var(--brown);
     font-size: 19px;
+    font-weight: 800;
     line-height: 1;
     text-decoration: none;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, .12);
+    transition: transform .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.opening-login-row a:hover {
+    transform: translateY(-2px);
+    background: var(--white);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, .16);
 }
 
 .auth-form-page {
@@ -1268,11 +1293,29 @@ input[type="password"]::-ms-clear { display: none; }
     }
 }
 
+@media (max-width: 980px) {
+    .opening-page { padding-top: 96px; }
+    .opening-copy h1 { font-size: 52px; }
+    .opening-copy p {
+        margin-bottom: 44px;
+        font-size: 22px;
+    }
+    .role-grid { gap: 20px; }
+    .role-card {
+        min-height: 196px;
+        padding: 26px;
+        border-radius: 20px;
+    }
+    .role-card strong { font-size: 38px; }
+    .role-card small { font-size: 18px; }
+    .role-arrow { font-size: 36px; }
+}
+
 @media (max-width: 760px) {
     .opening-page { padding: 82px 18px 48px; }
     .opening-copy h1 { font-size: 42px; }
     .opening-copy p {
-        margin: 10px 0 64px;
+        margin: 10px auto 42px;
         font-size: 18px;
         line-height: 1.25;
     }
@@ -1281,12 +1324,12 @@ input[type="password"]::-ms-clear { display: none; }
     .print-summary-grid { grid-template-columns: 1fr; }
     .role-grid { gap: 20px; }
     .role-card {
-        min-height: 154px;
+        min-height: 168px;
         padding: 25px 22px 20px;
         border-radius: 22px;
     }
-    .role-card strong { font-size: 42px; }
-    .role-card small { font-size: 19px; line-height: 1.08; }
+    .role-card strong { font-size: 36px; }
+    .role-card small { font-size: 17px; line-height: 1.25; }
     .role-arrow { font-size: 40px; }
     .opening-login-row {
         flex-direction: column;
@@ -1378,75 +1421,26 @@ input[type="password"]::-ms-clear { display: none; }
     align-items: center;
 }
 
-.pos-sidebar-toggle,
-.pos-topbar-sidebar-toggle {
-    width: 44px;
-    height: 44px;
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid #d8cfc8;
-    border-radius: 12px;
-    background: #fffaf6;
-    color: #3a1e1a;
-    cursor: pointer;
-    padding: 0;
-    transition: background .18s ease, border-color .18s ease, transform .18s ease;
-}
-
-.pos-sidebar-toggle:hover,
-.pos-topbar-sidebar-toggle:hover {
-    border-color: #3a1e1a;
-    background: #efe5dc;
-    transform: translateY(-1px);
-}
-
-.pos-sidebar-toggle span,
-.pos-topbar-sidebar-toggle span {
-    width: 22px;
-    height: 15px;
-    position: relative;
-    display: block;
-    border-top: 2px solid currentColor;
-    border-bottom: 2px solid currentColor;
-}
-
-.pos-sidebar-toggle span::before,
-.pos-topbar-sidebar-toggle span::before {
-    content: "";
-    position: absolute;
-    top: 4px;
-    left: 0;
-    width: 22px;
-    border-top: 2px solid currentColor;
-}
-
-.pos-sidebar-toggle {
-    align-self: flex-end;
-    margin-bottom: 2px;
-}
-
-.pos-page--mockup.is-sidebar-collapsed .pos-sidebar-toggle,
-.pos-sidebar-mock--collapsed .pos-sidebar-toggle {
-    align-self: center;
-}
-
-.pos-topbar-sidebar-toggle {
-    display: none;
-}
-
 .pos-sidebar-brand {
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: flex-start;
     gap: 12px;
     min-height: 54px;
     padding: 4px 8px 18px;
+    border: 0;
     border-bottom: 1px solid rgba(216, 207, 200, .72);
+    background: transparent;
     color: #1f1412;
+    cursor: pointer;
+    font: inherit;
     text-decoration: none;
     transition: justify-content .24s ease, padding .24s ease, border-color .24s ease;
+}
+
+.pos-sidebar-brand:hover {
+    border-bottom-color: #c9bcb4;
 }
 
 .pos-sidebar-brand-text {
@@ -1469,8 +1463,37 @@ input[type="password"]::-ms-clear { display: none; }
     transition: width .24s ease, height .24s ease, transform .24s ease;
 }
 
-.pos-page--mockup.is-sidebar-collapsed .pos-sidebar-brand {
+.pos-topbar-logo-toggle {
+    width: 48px;
+    height: 48px;
+    display: none;
+    align-items: center;
     justify-content: center;
+    border: 1px solid #d8cfc8;
+    border-radius: 14px;
+    background: #fffaf6;
+    cursor: pointer;
+    padding: 6px;
+    transition: background .18s ease, border-color .18s ease, transform .18s ease;
+}
+
+.pos-topbar-logo-toggle:hover {
+    border-color: #3a1e1a;
+    background: #efe5dc;
+    transform: translateY(-1px);
+}
+
+.pos-topbar-logo-toggle img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: brightness(0);
+}
+
+.pos-page--mockup.is-sidebar-collapsed .pos-sidebar-brand,
+.pos-sidebar-mock--collapsed .pos-sidebar-brand {
+    justify-content: center;
+    gap: 0;
     width: 100%;
     padding: 4px 0 18px;
 }
@@ -1922,35 +1945,42 @@ input[type="password"]::-ms-clear { display: none; }
 
 .mock-product-bottom strong {
     display: block;
+    margin: 0;
     color: #2a100d;
     font-family: Consolas, "Courier New", monospace;
     font-size: 16px;
     font-weight: 900;
 }
 
+.mock-product-price {
+    white-space: nowrap;
+}
+
 .mock-product-bottom small {
     display: block;
-    margin-top: 4px;
+    margin: 4px 0 0;
     color: #7b6e68;
     font-size: 12px;
     font-weight: 800;
 }
 
 .pos-product-card--mock .pos-add-button {
-    min-width: 98px;
-    min-height: 42px;
+    width: 48px;
+    min-width: 48px;
+    height: 48px;
+    min-height: 48px;
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
     margin: 0;
-    padding: 0 14px;
+    padding: 0;
     border: 0;
     border-radius: 12px;
     background: #3a1e1a;
     color: white;
-    font-size: 14px;
+    font-size: 26px;
     line-height: 1;
     font-weight: 900;
     cursor: pointer;
@@ -1963,6 +1993,7 @@ input[type="password"]::-ms-clear { display: none; }
 .pos-product-card--mock .pos-add-button:disabled {
     color: #776a65;
     background: #d8cfc8;
+    font-size: 12px;
     cursor: not-allowed;
 }
 
@@ -2212,7 +2243,7 @@ input[type="password"]::-ms-clear { display: none; }
         transform: translateX(0);
     }
 
-    .pos-topbar-sidebar-toggle {
+    .pos-topbar-logo-toggle {
         display: inline-flex;
     }
 
@@ -2253,35 +2284,47 @@ input[type="password"]::-ms-clear { display: none; }
 }
 
 .payment-page-back {
-    width: min(1240px, 100%);
+    width: max-content;
+    max-width: 100%;
     min-height: 42px;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    margin: 0 auto 18px;
+    gap: 10px;
+    margin: 0 0 20px calc((100% - min(1240px, 100%)) / 2);
+    padding: 0 16px 0 12px;
+    border: 1px solid #d8cfc8;
+    border-radius: 999px;
+    background: #fffaf6;
     color: #3a1e1a;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 900;
     text-decoration: none;
     user-select: none;
+    box-shadow: 0 10px 24px rgba(58, 30, 26, .08);
+    transition: background .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
 .payment-page-back span {
-    width: 38px;
-    height: 38px;
+    width: 24px;
+    height: 24px;
     display: grid;
     place-items: center;
-    border: 1px solid #d8cfc8;
-    border-radius: 12px;
-    background: #fffaf6;
-    font-size: 22px;
+    border-radius: 50%;
+    background: #efe5dc;
+    font-size: 18px;
     line-height: 1;
-    transition: background .18s ease, border-color .18s ease, transform .18s ease;
+    transition: background .18s ease, transform .18s ease;
+}
+
+.payment-page-back:hover {
+    border-color: #3a1e1a;
+    background: #ffffff;
+    box-shadow: 0 14px 28px rgba(58, 30, 26, .12);
+    transform: translateY(-1px);
 }
 
 .payment-page-back:hover span {
-    border-color: #3a1e1a;
-    background: #efe5dc;
+    background: #e4d8cf;
     transform: translateX(-2px);
 }
 
@@ -2426,6 +2469,10 @@ input[type="password"]::-ms-clear { display: none; }
     margin-bottom: 22px;
 }
 
+.payment-page .payment-mode.is-active {
+    margin-top: 28px;
+}
+
 .payment-page .quick-cash-row button,
 .payment-page .cash-keypad button {
     background: #ffffff !important;
@@ -2470,6 +2517,34 @@ input[type="password"]::-ms-clear { display: none; }
     color: #3a1e1a !important;
     border-color: #3a1e1a;
     box-shadow: none;
+    opacity: 1;
+}
+
+.payment-page .qris-status-button,
+.payment-page button.qris-status-button {
+    min-height: 64px;
+    border: 2px solid #3a1e1a;
+    border-radius: 16px;
+    background: #3a1e1a !important;
+    color: #ffffff !important;
+    font-size: 20px;
+    font-weight: 900;
+    box-shadow: 0 14px 28px rgba(58, 30, 26, .16);
+}
+
+.payment-page .qris-status-button:hover:not(:disabled),
+.payment-page button.qris-status-button:hover:not(:disabled) {
+    background: #4d2823 !important;
+    border-color: #4d2823;
+}
+
+.payment-page .qris-status-button:disabled,
+.payment-page button.qris-status-button:disabled {
+    background: #efe5dc !important;
+    color: #3a1e1a !important;
+    border-color: #d8cfc8;
+    box-shadow: none;
+    cursor: not-allowed;
     opacity: 1;
 }
 
@@ -2540,7 +2615,7 @@ input[type="password"]::-ms-clear { display: none; }
 }
 
 .receipt-shell--thermal {
-    width: min(100%, 420px);
+    width: min(100%, 620px);
     margin: 0 auto;
 }
 
@@ -2665,13 +2740,20 @@ input[type="password"]::-ms-clear { display: none; }
 
 .receipt-shell--thermal .receipt-actions {
     margin-top: 28px;
-    display: grid;
-    grid-template-columns: 1fr 1.25fr 1fr;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
     gap: 12px;
 }
 
 .receipt-shell--thermal .receipt-actions > * {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: max-content;
     min-height: 48px;
+    padding-inline: 28px;
+    white-space: nowrap;
 }
 
 @media (max-width: 1080px) {

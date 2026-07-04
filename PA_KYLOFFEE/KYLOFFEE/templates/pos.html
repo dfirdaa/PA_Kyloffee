@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}POS Staff - Kyloffee{% endblock %}
+{% block title %}POS Kasir - Kyloffee{% endblock %}
 {% block body %}
 <main
     class="pos-page pos-page--mockup"
@@ -9,18 +9,15 @@
     <aside class="pos-sidebar-mock" id="posSidebar" data-pos-sidebar>
         <button
             type="button"
-            class="pos-sidebar-toggle"
+            class="pos-sidebar-brand"
             data-pos-sidebar-toggle
             aria-controls="posSidebar"
             aria-expanded="true"
             aria-label="Tutup sidebar POS"
         >
-            <span></span>
-        </button>
-        <a href="{{ url_for('pos') }}" class="pos-sidebar-brand" aria-label="Kyloffee POS">
             <img class="pos-sidebar-brand-logo" src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
             <span class="pos-sidebar-brand-text">Kyloffee</span>
-        </a>
+        </button>
 
         <nav class="pos-sidebar-nav" aria-label="POS navigation">
             <a href="{{ url_for('pos') }}" class="pos-sidebar-nav-link active">
@@ -39,20 +36,20 @@
         <header class="pos-topbar-mock">
             <button
                 type="button"
-                class="pos-topbar-sidebar-toggle"
+                class="pos-topbar-logo-toggle"
                 data-pos-sidebar-toggle
                 aria-controls="posSidebar"
                 aria-expanded="true"
                 aria-label="Buka sidebar POS"
             >
-                <span></span>
+                <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
             </button>
             <h1>Kyloffee POS</h1>
             <label class="pos-search-mock">
                 <input type="search" data-menu-search placeholder="Cari menu, kategori, deskripsi" aria-label="Cari menu">
                 <span aria-hidden="true">&#8981;</span>
             </label>
-            <p>Shift : {{ shift }} Staff: {{ staff_name }}</p>
+            <p>Shift : {{ shift }} Kasir: {{ staff_name }}</p>
         </header>
 
         <section class="pos-board-mock">
@@ -104,7 +101,7 @@
                                     </div>
                                     <div class="mock-product-bottom">
                                         <div>
-                                            <strong>Rp {{ "{:,.0f}".format(product.price|int).replace(",", ".") }}</strong>
+                                            <strong class="mock-product-price">Rp{{ "{:,.0f}".format(product.price|int).replace(",", ".") }}</strong>
                                             <small data-stock-label>Stok: {{ product_stock }}</small>
                                         </div>
                                         <button
@@ -114,7 +111,7 @@
                                             {% if product_stock <= 0 %}disabled{% endif %}
                                             aria-label="Tambah {{ product.name }}"
                                         >
-                                            {% if product_stock > 0 %}+ Tambah{% else %}Stok Habis{% endif %}
+                                            {% if product_stock > 0 %}+{% else %}Habis{% endif %}
                                         </button>
                                     </div>
                                 </div>
@@ -153,11 +150,11 @@
                     </div>
                     <div class="order-summary-line">
                         <span>Subtotal</span>
-                        <strong data-summary-subtotal>Rp 0</strong>
+                        <strong data-summary-subtotal>Rp0</strong>
                     </div>
                     <div class="order-summary-line order-summary-total">
                         <span>Total</span>
-                        <strong data-summary-total>Rp 0</strong>
+                        <strong data-summary-total>Rp0</strong>
                     </div>
                     <button type="button" class="pos-payment-open" data-open-payment disabled>Payment</button>
                     <p class="pos-message" data-pos-message hidden></p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Staff Management - Kyloffee</title>
+    <title>Cashier Management - Kyloffee</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu.css') }}">
 </head>
@@ -29,23 +29,23 @@
 
                 <div class="page-heading page-heading--row staff-heading">
                     <div>
-                        <h1>Manajemen Staf</h1>
-                        <p class="page-subtitle">Kelola data karyawan dan hak akses mereka.</p>
+                        <h1>Manajemen Kasir</h1>
+                        <p class="page-subtitle">Kelola akun kasir dan akses POS mereka.</p>
                     </div>
 
                     <a href="{{ url_for('owner_users_add') }}" class="primary-button staff-add-button">
                         <span>+</span>
-                        Add New Staff
+                        Tambah Kasir
                     </a>
                 </div>
 
-                <section class="menu-table-card staff-table-card" aria-label="Daftar staf Kyloffee">
+                <section class="menu-table-card staff-table-card" aria-label="Daftar kasir Kyloffee">
                     <div class="table-responsive">
                         <table class="menu-table staff-table">
                             <thead>
                                 <tr>
-                                    <th>Nama Staf</th>
-                                    <th>Peran</th>
+                                    <th>Nama Kasir</th>
+                                    <th>Role</th>
                                     <th>Email/Telepon</th>
                                     <th>Tanggal Bergabung</th>
                                     <th>Status</th>
@@ -76,7 +76,7 @@
                                                 </span>
                                             </td>
                                             <td class="action-cell">
-                                                <a href="{{ url_for('owner_users_edit', staff_id=staff.id) }}" class="icon-button" title="Edit staf">&#9998;</a>
+                                                <a href="{{ url_for('owner_users_edit', staff_id=staff.id) }}" class="icon-button" title="Edit kasir">&#9998;</a>
                                             </td>
                                         </tr>
                                     {% endfor %}
@@ -86,8 +86,8 @@
                                             <div class="empty-state__icon">
                                                 <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
                                             </div>
-                                            <strong>Belum ada staff.</strong>
-                                            <p>Tambahkan staff baru agar akun POS bisa dikelola dari owner.</p>
+                                            <strong>Belum ada kasir.</strong>
+                                            <p>Tambahkan kasir baru agar akun POS terhubung ke Owner.</p>
                                         </td>
                                     </tr>
                                 {% endif %}
@@ -99,7 +99,7 @@
                     {% set end_item = page * per_page if page * per_page < total else total %}
 
                     <footer class="table-footer">
-                        <p>Menampilkan {{ start_item }}-{{ end_item }} dari {{ total }} staf</p>
+                        <p>Menampilkan {{ start_item }}-{{ end_item }} dari {{ total }} kasir</p>
                         <div class="pagination">
                             <a class="page-button {% if page <= 1 %}disabled{% endif %}" href="{{ url_for('owner_staff', page=page-1) if page > 1 else '#' }}">&lsaquo;</a>
                             <a class="page-button {% if page >= total_pages %}disabled{% endif %}" href="{{ url_for('owner_staff', page=page+1) if page < total_pages else '#' }}">&rsaquo;</a>

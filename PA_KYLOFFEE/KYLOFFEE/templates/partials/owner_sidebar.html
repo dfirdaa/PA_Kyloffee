@@ -14,25 +14,20 @@
 <aside class="owner-sidebar" id="ownerSidebar" data-owner-sidebar>
     <button
         type="button"
-        class="owner-sidebar-toggle"
+        class="brand"
         data-owner-sidebar-toggle
         aria-controls="ownerSidebar"
         aria-expanded="true"
         aria-label="Perkecil sidebar Owner"
     >
-        <span></span>
-    </button>
-
-    <a href="{{ url_for('owner_menu') }}" class="brand" aria-label="Kyloffee Owner Home" title="Kyloffee">
         <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="" class="brand-logo-mark">
         <span class="brand-name owner-sidebar__text">Kyloffee</span>
-    </a>
+    </button>
 
     <nav class="owner-nav" aria-label="Owner navigation">
         <a
             href="{{ url_for('owner_menu') }}"
             class="owner-nav__link {% if active_page == 'menu' %}active{% endif %}"
-            title="Menu Management"
             data-owner-nav-link
         >
             <span class="owner-nav__icon" aria-hidden="true">
@@ -46,7 +41,6 @@
         <a
             href="{{ url_for('owner_categories') }}"
             class="owner-nav__link {% if active_page == 'categories' %}active{% endif %}"
-            title="Category Management"
             data-owner-nav-link
         >
             <span class="owner-nav__icon" aria-hidden="true">
@@ -60,7 +54,6 @@
         <a
             href="{{ url_for('owner_reports') }}"
             class="owner-nav__link {% if active_page == 'reports' %}active{% endif %}"
-            title="Financial Reports"
             data-owner-nav-link
         >
             <span class="owner-nav__icon" aria-hidden="true">
@@ -74,7 +67,6 @@
         <a
             href="{{ url_for('owner_staff') }}"
             class="owner-nav__link {% if active_page == 'staff' %}active{% endif %}"
-            title="Staff Management"
             data-owner-nav-link
         >
             <span class="owner-nav__icon" aria-hidden="true">
@@ -82,11 +74,11 @@
                     <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM16.5 10a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3.5 19c.7-3.1 2.2-5 4.5-5s3.8 1.9 4.5 5M13.5 18c.5-2.3 1.6-3.7 3.2-3.7 1.8 0 3 1.5 3.8 3.7" />
                 </svg>
             </span>
-            <span class="owner-nav__text owner-sidebar__text">Staff Management</span>
+            <span class="owner-nav__text owner-sidebar__text">Cashier Management</span>
         </a>
     </nav>
 
-    <a href="{{ url_for('logout') }}" class="owner-logout" title="Log Out" data-owner-logout>
+    <a href="{{ url_for('logout') }}" class="owner-logout" data-owner-logout>
         <span class="owner-logout__icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false">
                 <path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" />

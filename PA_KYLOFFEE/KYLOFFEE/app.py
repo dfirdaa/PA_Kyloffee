@@ -137,11 +137,10 @@ class DatabaseConnection:
     def __getattr__(self, name):
         return getattr(self.conn, name)
 
-STAFF_INVITATION_CODE = "KYLOFFEE-STAFF"
 STAFF_DEFAULT_PASSWORD = os.getenv("STAFF_DEFAULT_PASSWORD", "kyloffee123")
 MIN_MENU_PRICE = 500
 CATEGORY_NAME_MAX_LENGTH = 100
-STAFF_POSITIONS = ["Kasir", "Barista", "Admin", "Supervisor"]
+STAFF_POSITIONS = ["Kasir"]
 STAFF_STATUSES = ["Aktif", "Cuti", "Nonaktif"]
 
 app = Flask(
@@ -305,6 +304,46 @@ def table_exists(table_name):
             (table_name,),
         )
     return cursor.fetchone() is not None
+
+
+def role_display_name(role):
+    role = str(role or "").strip().lower()
+    if role == "owner":
+        return "Owner"
+    if role == "staff":
+        return "Kasir"
+    return role.title() or "Pengguna"
+
+
+def attach_legacy_cashiers_to_single_owner():
+    db = get_db()
+    owner_rows = fetch_all_dict(
+        db.execute(
+            "SELECT id FROM users WHERE LOWER(role) = ? ORDER BY id ASC",
+            ("owner",),
+        )
+    )
+    if len(owner_rows) != 1:
+        return
+
+    execute_commit(
+        """
+        UPDATE users
+        SET owner_id = ?
+        WHERE LOWER(role) = ? AND owner_id IS NULL
+        """,
+        (owner_rows[0]["id"], "staff"),
+    )
+
+
+def get_default_owner_id_for_cashier():
+    owner = row_to_dict(
+        get_db().execute(
+            "SELECT id FROM users WHERE LOWER(role) = ? ORDER BY id ASC LIMIT 1",
+            ("owner",),
+        ).fetchone()
+    )
+    return owner.get("id") if owner else None
 
 
 def ensure_category_columns():
@@ -574,13 +613,25 @@ def ensure_user_columns():
     if "staff_phone" not in columns:
         execute_commit("ALTER TABLE users ADD COLUMN staff_phone VARCHAR(40)" if db.is_mysql else "ALTER TABLE users ADD COLUMN staff_phone TEXT")
     if "staff_position" not in columns:
-        execute_commit("ALTER TABLE users ADD COLUMN staff_position VARCHAR(100) DEFAULT 'Staff'" if db.is_mysql else "ALTER TABLE users ADD COLUMN staff_position TEXT DEFAULT 'Staff'")
+        execute_commit("ALTER TABLE users ADD COLUMN staff_position VARCHAR(100) DEFAULT 'Kasir'" if db.is_mysql else "ALTER TABLE users ADD COLUMN staff_position TEXT DEFAULT 'Kasir'")
     if "joined_date" not in columns:
         execute_commit("ALTER TABLE users ADD COLUMN joined_date DATE" if db.is_mysql else "ALTER TABLE users ADD COLUMN joined_date TEXT")
     if "staff_status" not in columns:
         execute_commit("ALTER TABLE users ADD COLUMN staff_status VARCHAR(40) DEFAULT 'Aktif'" if db.is_mysql else "ALTER TABLE users ADD COLUMN staff_status TEXT DEFAULT 'Aktif'")
     if "is_active" not in columns:
         execute_commit("ALTER TABLE users ADD COLUMN is_active TINYINT NOT NULL DEFAULT 1" if db.is_mysql else "ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+    if "owner_id" not in columns:
+        execute_commit("ALTER TABLE users ADD COLUMN owner_id BIGINT NULL" if db.is_mysql else "ALTER TABLE users ADD COLUMN owner_id INTEGER")
+
+    if db.is_mysql:
+        owner_index = db.execute(
+            "SHOW INDEX FROM users WHERE Key_name = ?",
+            ("idx_users_owner_id",),
+        ).fetchone()
+        if not owner_index:
+            execute_commit("CREATE INDEX idx_users_owner_id ON users (owner_id)")
+    else:
+        execute_commit("CREATE INDEX IF NOT EXISTS idx_users_owner_id ON users (owner_id)")
 
 
 def init_db():
@@ -595,8 +646,9 @@ def init_db():
                 email VARCHAR(255) UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 role VARCHAR(50) NOT NULL,
+                owner_id BIGINT NULL,
                 staff_phone VARCHAR(40),
-                staff_position VARCHAR(100) DEFAULT 'Staff',
+                staff_position VARCHAR(100) DEFAULT 'Kasir',
                 joined_date DATE,
                 staff_status VARCHAR(40) DEFAULT 'Aktif',
                 is_active TINYINT NOT NULL DEFAULT 1,
@@ -621,8 +673,9 @@ def init_db():
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL,
+                owner_id INTEGER,
                 staff_phone TEXT,
-                staff_position TEXT DEFAULT 'Staff',
+                staff_position TEXT DEFAULT 'Kasir',
                 joined_date TEXT,
                 staff_status TEXT DEFAULT 'Aktif',
                 is_active INTEGER NOT NULL DEFAULT 1,
@@ -637,6 +690,7 @@ def init_db():
         )
 
     ensure_user_columns()
+    attach_legacy_cashiers_to_single_owner()
 
 
 def ensure_menu_columns():
@@ -873,7 +927,7 @@ def staff_required(view_func):
             return redirect_for_role()
 
         user = get_db().execute(
-            "SELECT role, is_active FROM users WHERE id = ?",
+            "SELECT role, is_active, owner_id FROM users WHERE id = ?",
             (session.get("user_id"),),
         ).fetchone()
         user_data = row_to_dict(user)
@@ -883,7 +937,11 @@ def staff_required(view_func):
             return redirect(url_for("login"))
         if int(user_data.get("is_active", 1) or 0) != 1:
             session.clear()
-            flash("Akun staff ini sedang nonaktif. Silakan hubungi owner.", "error")
+            flash("Akun kasir ini sedang nonaktif. Silakan hubungi Owner.", "error")
+            return redirect(url_for("login"))
+        if not user_data.get("owner_id"):
+            session.clear()
+            flash("Akun kasir belum terhubung dengan Owner. Silakan hubungi Owner untuk dibuatkan ulang.", "error")
             return redirect(url_for("login"))
 
         return view_func(**kwargs)
@@ -899,6 +957,16 @@ def owner_required(view_func):
             return redirect(url_for("login"))
         if session.get("role") != "owner":
             return redirect_for_role()
+
+        user = get_db().execute(
+            "SELECT role FROM users WHERE id = ?",
+            (session.get("user_id"),),
+        ).fetchone()
+        user_data = row_to_dict(user)
+        if not user_data or str(user_data.get("role") or "").strip().lower() != "owner":
+            session.clear()
+            flash("Sesi tidak valid. Silakan login ulang.", "error")
+            return redirect(url_for("login"))
         return view_func(**kwargs)
 
     return wrapped_view
@@ -940,7 +1008,7 @@ def format_report_datetime(value):
 
 
 def format_currency(amount):
-    return f"Rp {int(amount or 0):,}".replace(",", ".")
+    return f"Rp{int(amount or 0):,}".replace(",", ".")
 
 
 def format_short_date(value):
@@ -1001,19 +1069,29 @@ def shift_month(source_date, month_delta):
     return date(year, month, 1)
 
 
-def get_period_totals(start_date, end_date):
+def get_period_totals(start_date, end_date, owner_id=None):
     db = get_db()
+    owner_join = ""
+    owner_filter = ""
+    params = [start_date.isoformat(), end_date.isoformat()]
+    if owner_id:
+        owner_join = "LEFT JOIN users u ON u.id = t.staff_id"
+        owner_filter = "AND u.owner_id = ?"
+        params.append(owner_id)
+
     row = row_to_dict(
         db.execute(
-            """
+            f"""
             SELECT
                 COALESCE(SUM(total_amount), 0) AS revenue,
                 COUNT(*) AS transactions
-            FROM pos_transactions
-            WHERE transaction_date BETWEEN ? AND ?
-              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
+            FROM pos_transactions t
+            {owner_join}
+            WHERE t.transaction_date BETWEEN ? AND ?
+              AND LOWER(t.status) IN ('selesai', 'paid', 'completed', 'complete')
+              {owner_filter}
             """,
-            (start_date.isoformat(), end_date.isoformat()),
+            params,
         ).fetchone()
     )
     revenue = int(row.get("revenue") or 0)
@@ -1043,22 +1121,32 @@ def trend_tone(current_value, previous_value):
     return "positive" if current_value > previous_value else "negative"
 
 
-def fetch_daily_details(start_date, end_date):
+def fetch_daily_details(start_date, end_date, owner_id=None):
     db = get_db()
+    owner_join = ""
+    owner_filter = ""
+    params = [start_date.isoformat(), end_date.isoformat()]
+    if owner_id:
+        owner_join = "LEFT JOIN users u ON u.id = t.staff_id"
+        owner_filter = "AND u.owner_id = ?"
+        params.append(owner_id)
+
     rows = fetch_all_dict(
         db.execute(
-            """
+            f"""
             SELECT
-                transaction_date,
+                t.transaction_date,
                 COUNT(*) AS transactions,
-                COALESCE(SUM(total_amount), 0) AS income
-            FROM pos_transactions
-            WHERE transaction_date BETWEEN ? AND ?
-              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
-            GROUP BY transaction_date
-            ORDER BY transaction_date DESC
+                COALESCE(SUM(t.total_amount), 0) AS income
+            FROM pos_transactions t
+            {owner_join}
+            WHERE t.transaction_date BETWEEN ? AND ?
+              AND LOWER(t.status) IN ('selesai', 'paid', 'completed', 'complete')
+              {owner_filter}
+            GROUP BY t.transaction_date
+            ORDER BY t.transaction_date DESC
             """,
-            (start_date.isoformat(), end_date.isoformat()),
+            params,
         )
     )
 
@@ -1077,11 +1165,18 @@ def fetch_daily_details(start_date, end_date):
     return details
 
 
-def fetch_recent_transactions(start_date, end_date, limit=5):
+def fetch_recent_transactions(start_date, end_date, limit=5, owner_id=None):
     db = get_db()
+    owner_filter = ""
+    params = [start_date.isoformat(), end_date.isoformat()]
+    if owner_id:
+        owner_filter = "AND u.owner_id = ?"
+        params.append(owner_id)
+    params.append(limit)
+
     rows = fetch_all_dict(
         db.execute(
-            """
+            f"""
             SELECT
                 t.order_code,
                 t.transaction_date,
@@ -1096,10 +1191,11 @@ def fetch_recent_transactions(start_date, end_date, limit=5):
             LEFT JOIN users u ON u.id = t.staff_id
             WHERE t.transaction_date BETWEEN ? AND ?
               AND LOWER(t.status) IN ('selesai', 'paid', 'completed', 'complete')
+              {owner_filter}
             ORDER BY t.transaction_date DESC, t.transaction_time DESC, t.id DESC
             LIMIT ?
             """,
-            (start_date.isoformat(), end_date.isoformat(), limit),
+            params,
         )
     )
 
@@ -1123,17 +1219,27 @@ def fetch_recent_transactions(start_date, end_date, limit=5):
     return transactions
 
 
-def fetch_hourly_sales(start_date, end_date):
+def fetch_hourly_sales(start_date, end_date, owner_id=None):
     db = get_db()
+    owner_join = ""
+    owner_filter = ""
+    params = [start_date.isoformat(), end_date.isoformat()]
+    if owner_id:
+        owner_join = "LEFT JOIN users u ON u.id = t.staff_id"
+        owner_filter = "AND u.owner_id = ?"
+        params.append(owner_id)
+
     rows = fetch_all_dict(
         db.execute(
-            """
-            SELECT transaction_time, total_amount
-            FROM pos_transactions
-            WHERE transaction_date BETWEEN ? AND ?
-              AND LOWER(status) IN ('selesai', 'paid', 'completed', 'complete')
+            f"""
+            SELECT t.transaction_time, t.total_amount
+            FROM pos_transactions t
+            {owner_join}
+            WHERE t.transaction_date BETWEEN ? AND ?
+              AND LOWER(t.status) IN ('selesai', 'paid', 'completed', 'complete')
+              {owner_filter}
             """,
-            (start_date.isoformat(), end_date.isoformat()),
+            params,
         )
     )
 
@@ -1163,13 +1269,13 @@ def fetch_hourly_sales(start_date, end_date):
     return chart
 
 
-def build_monthly_summary(end_date):
+def build_monthly_summary(end_date, owner_id=None):
     current_month = end_date.replace(day=1)
     rows = []
     for month_delta in (-2, -1, 0):
         month_start = shift_month(current_month, month_delta)
         month_end = shift_month(month_start, 1) - timedelta(days=1)
-        totals = get_period_totals(month_start, month_end)
+        totals = get_period_totals(month_start, month_end, owner_id)
         rows.append(
             {
                 "month": format_month_name(month_start),
@@ -1186,19 +1292,20 @@ def build_financial_report(args=None):
     args = args or request.args
     start_date, end_date = resolve_report_period(args)
     now = datetime.now()
-    totals = get_period_totals(start_date, end_date)
+    owner_id = session.get("user_id") if session.get("role") == "owner" else None
+    totals = get_period_totals(start_date, end_date, owner_id)
     day_count = max((end_date - start_date).days + 1, 1)
     previous_end = start_date - timedelta(days=1)
     previous_start = previous_end - timedelta(days=day_count - 1)
-    previous_totals = get_period_totals(previous_start, previous_end)
+    previous_totals = get_period_totals(previous_start, previous_end, owner_id)
 
     today = now.date()
-    today_totals = get_period_totals(today, today)
+    today_totals = get_period_totals(today, today, owner_id)
     average_income = totals["revenue"] // day_count
     previous_average = previous_totals["revenue"] // day_count if day_count else 0
     period_label = format_report_period(start_date, end_date)
-    daily_details = fetch_daily_details(start_date, end_date)
-    recent_transactions = fetch_recent_transactions(start_date, end_date, limit=5)
+    daily_details = fetch_daily_details(start_date, end_date, owner_id)
+    recent_transactions = fetch_recent_transactions(start_date, end_date, limit=5, owner_id=owner_id)
 
     return {
         "period": period_label,
@@ -1247,7 +1354,7 @@ def build_financial_report(args=None):
         ],
         "net_profit": format_currency(totals["profit"]),
         "net_profit_trend": build_trend_text(totals["profit"], previous_totals["profit"], "Belum ada data periode lalu"),
-        "hourly_sales": fetch_hourly_sales(start_date, end_date),
+        "hourly_sales": fetch_hourly_sales(start_date, end_date, owner_id),
         "daily_details": daily_details,
         "daily_totals": {
             "transactions": str(totals["transactions"]),
@@ -1255,8 +1362,8 @@ def build_financial_report(args=None):
             "profit": format_currency(totals["profit"]),
         },
         "recent_transactions": recent_transactions,
-        "print_transactions": fetch_recent_transactions(start_date, end_date, limit=20),
-        "monthly_summary": build_monthly_summary(end_date),
+        "print_transactions": fetch_recent_transactions(start_date, end_date, limit=20, owner_id=owner_id),
+        "monthly_summary": build_monthly_summary(end_date, owner_id),
         "daily_income_rows": daily_details[:6],
     }
 
@@ -1344,7 +1451,7 @@ def staff_status_tone(status):
 
 def staff_initial(name):
     name = str(name or "").strip()
-    return name[:1].upper() if name else "S"
+    return name[:1].upper() if name else "K"
 
 
 def format_staff_member(row):
@@ -1354,12 +1461,12 @@ def format_staff_member(row):
     joined_date = data.get("joined_date") or data.get("created_at")
     return {
         "id": data.get("id"),
-        "full_name": data.get("full_name") or "Staff",
+        "full_name": data.get("full_name") or "Kasir",
         "initial": staff_initial(data.get("full_name")),
         "email": data.get("email") or "-",
         "phone": data.get("staff_phone") or "-",
         "phone_value": data.get("staff_phone") or "",
-        "position": data.get("staff_position") or "Staff",
+        "position": "Kasir",
         "joined_date": format_staff_date(joined_date),
         "joined_date_value": parse_staff_date(joined_date) or datetime.now().date().isoformat(),
         "status": status,
@@ -1377,7 +1484,7 @@ def get_staff_form_data():
         "full_name": request.form.get("full_name", "").strip(),
         "email": request.form.get("email", "").strip().lower(),
         "staff_phone": request.form.get("staff_phone", "").strip(),
-        "staff_position": request.form.get("staff_position", "").strip(),
+        "staff_position": request.form.get("staff_position", "Kasir").strip() or "Kasir",
         "joined_date": request.form.get("joined_date", "").strip(),
         "staff_status": status,
         "is_active": is_active,
@@ -1396,12 +1503,14 @@ def validate_staff_form(form_data, require_email=True):
     if not form_data["staff_phone"]:
         errors.append("Nomor telepon wajib diisi.")
     if not form_data["staff_position"]:
-        errors.append("Peran staff wajib diisi.")
+        errors.append("Role kasir wajib diisi.")
+    elif form_data["staff_position"] not in STAFF_POSITIONS:
+        errors.append("Role kasir tidak valid.")
     joined_date = parse_staff_date(form_data["joined_date"])
     if not joined_date:
         errors.append("Tanggal bergabung wajib diisi dengan format tanggal yang valid.")
     if form_data["staff_status"] not in STAFF_STATUSES:
-        errors.append("Status staff tidak valid.")
+        errors.append("Status kasir tidak valid.")
     return errors, joined_date
 
 
@@ -1774,6 +1883,7 @@ def opening():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    init_db()
     if session.get("user_id"):
         return redirect_for_role()
 
@@ -1795,7 +1905,10 @@ def login():
         user_data = row_to_dict(user)
         user_role = str(user_data.get("role") or "").strip().lower()
         if user_role == "staff" and int(user_data.get("is_active", 1) or 0) != 1:
-            flash("Akun staff ini sedang nonaktif. Silakan hubungi owner.", "error")
+            flash("Akun kasir ini sedang nonaktif. Silakan hubungi Owner.", "error")
+            return render_template("login.html", email=email)
+        if user_role == "staff" and not user_data.get("owner_id"):
+            flash("Akun kasir belum terhubung dengan Owner. Silakan hubungi Owner untuk dibuatkan ulang.", "error")
             return render_template("login.html", email=email)
 
         session.clear()
@@ -1804,7 +1917,8 @@ def login():
         session["name"] = user_data["full_name"]
         session["username"] = user_data["full_name"]
         session["role"] = user_role
-        flash(f"Login sebagai {session['role'].title()} berhasil.", "success")
+        session["owner_id"] = user_data["id"] if user_role == "owner" else user_data.get("owner_id")
+        flash(f"Login sebagai {role_display_name(user_role)} berhasil.", "success")
         return redirect_for_role()
 
     registered_email = session.pop("registered_email", "")
@@ -1813,15 +1927,18 @@ def login():
 
 
 def register_user(role):
+    init_db()
     full_name = request.form.get("full_name", "").strip()
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "")
 
     errors = validate_auth_fields(full_name=full_name, email=email, password=password)
     if role == "staff":
-        invitation_code = request.form.get("invitation_code", "").strip()
-        if invitation_code != STAFF_INVITATION_CODE:
-            errors.append("Kode undangan tidak valid.")
+        owner_id = get_default_owner_id_for_cashier()
+        if not owner_id:
+            errors.append("Belum ada akun Owner. Daftarkan Owner terlebih dahulu sebelum membuat akun kasir.")
+    else:
+        owner_id = None
 
     if errors:
         for error in errors:
@@ -1836,13 +1953,36 @@ def register_user(role):
     password_hash = generate_password_hash(password)
     db = get_db()
     try:
-        db.execute(
-            """
-            INSERT INTO users (full_name, email, password_hash, role)
-            VALUES (?, ?, ?, ?)
-            """,
-            (full_name, email, password_hash, role),
-        )
+        if role == "staff":
+            db.execute(
+                """
+                INSERT INTO users (
+                    full_name, email, password_hash, role, owner_id,
+                    staff_position, joined_date, staff_status, is_active
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    full_name,
+                    email,
+                    password_hash,
+                    role,
+                    owner_id,
+                    "Kasir",
+                    datetime.now().date().isoformat(),
+                    "Aktif",
+                    1,
+                ),
+            )
+        else:
+            cursor = db.execute(
+                """
+                INSERT INTO users (full_name, email, password_hash, role)
+                VALUES (?, ?, ?, ?)
+                """,
+                (full_name, email, password_hash, role),
+            )
+            owner_id = cursor.lastrowid
         db.commit()
     except Exception:
         db.rollback()
@@ -1854,7 +1994,7 @@ def register_user(role):
             email=email,
         )
 
-    role_label = "Owner" if role == "owner" else "Staff"
+    role_label = role_display_name(role)
     flash(f"Registrasi {role_label} berhasil, silakan login.", "success")
     session["registered_email"] = email
     return redirect(url_for("login", email=email))
@@ -1862,6 +2002,7 @@ def register_user(role):
 
 @app.route("/register/owner", methods=["GET", "POST"])
 def register_owner():
+    init_db()
     if session.get("user_id"):
         return redirect_for_role()
     if request.method == "POST":
@@ -1869,13 +2010,19 @@ def register_owner():
     return render_template("register_owner.html")
 
 
-@app.route("/register/staff", methods=["GET", "POST"])
-def register_staff():
+@app.route("/register/kasir", methods=["GET", "POST"])
+def register_cashier():
+    init_db()
     if session.get("user_id"):
         return redirect_for_role()
     if request.method == "POST":
         return register_user("staff")
     return render_template("register_staff.html")
+
+
+@app.route("/register/staff", methods=["GET", "POST"])
+def register_staff():
+    return register_cashier()
 
 
 @app.route("/dashboard")
@@ -2554,22 +2701,28 @@ def owner_users():
     init_db()
     page = request.args.get("page", 1, type=int)
     per_page = 6
+    owner_id = session.get("user_id")
 
     if page < 1:
         page = 1
 
     db = get_db()
     offset = (page - 1) * per_page
-    total = fetch_scalar(db.execute("SELECT COUNT(*) FROM users WHERE LOWER(role) = ?", ("staff",))) or 0
+    total = fetch_scalar(
+        db.execute(
+            "SELECT COUNT(*) FROM users WHERE LOWER(role) = ? AND owner_id = ?",
+            ("staff", owner_id),
+        )
+    ) or 0
     staff_rows = db.execute(
         """
         SELECT id, full_name, email, staff_phone, staff_position, joined_date, staff_status, is_active, created_at
         FROM users
-        WHERE LOWER(role) = ?
+        WHERE LOWER(role) = ? AND owner_id = ?
         ORDER BY id ASC
         LIMIT ? OFFSET ?
         """,
-        ("staff", per_page, offset),
+        ("staff", owner_id, per_page, offset),
     ).fetchall()
 
     total_pages = max(1, (total + per_page - 1) // per_page)
@@ -2614,18 +2767,19 @@ def owner_users_add():
             execute_commit(
                 """
                 INSERT INTO users (
-                    full_name, email, password_hash, role, staff_phone, staff_position,
+                    full_name, email, password_hash, role, owner_id, staff_phone, staff_position,
                     joined_date, staff_status, is_active
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     form_data["full_name"],
                     form_data["email"],
                     generate_password_hash(STAFF_DEFAULT_PASSWORD),
                     "staff",
+                    session.get("user_id"),
                     form_data["staff_phone"],
-                    form_data["staff_position"],
+                    "Kasir",
                     joined_date,
                     "Aktif",
                     1,
@@ -2638,10 +2792,10 @@ def owner_users_add():
                 active_page="staff",
                 form_data=form_data,
                 staff_positions=STAFF_POSITIONS,
-                errors=["Email sudah terdaftar. Gunakan email staff yang berbeda."],
+                errors=["Email sudah terdaftar. Gunakan email kasir yang berbeda."],
             )
 
-        flash(f"Staff berhasil ditambahkan. Password awal: {STAFF_DEFAULT_PASSWORD}", "success")
+        flash(f"Kasir berhasil ditambahkan. Password awal: {STAFF_DEFAULT_PASSWORD}", "success")
         return redirect(url_for("owner_staff"))
 
     return render_template(
@@ -2663,13 +2817,13 @@ def owner_users_edit(staff_id):
         """
         SELECT id, full_name, email, staff_phone, staff_position, joined_date, staff_status, is_active, created_at
         FROM users
-        WHERE id = ? AND LOWER(role) = ?
+        WHERE id = ? AND LOWER(role) = ? AND owner_id = ?
         """,
-        (staff_id, "staff"),
+        (staff_id, "staff", session.get("user_id")),
     ).fetchone()
 
     if staff is None:
-        flash("Data staff tidak ditemukan.", "error")
+        flash("Data kasir tidak ditemukan.", "error")
         return redirect(url_for("owner_staff"))
 
     staff_data = format_staff_member(staff)
@@ -2696,18 +2850,19 @@ def owner_users_edit(staff_id):
                 UPDATE users
                 SET full_name = ?, email = ?, staff_phone = ?, staff_position = ?,
                     joined_date = ?, staff_status = ?, is_active = ?
-                WHERE id = ? AND LOWER(role) = ?
+                WHERE id = ? AND LOWER(role) = ? AND owner_id = ?
                 """,
                 (
                     form_data["full_name"],
                     form_data["email"],
                     form_data["staff_phone"],
-                    form_data["staff_position"],
+                    "Kasir",
                     joined_date,
                     form_data["staff_status"],
                     1 if form_data["is_active"] else 0,
                     staff_id,
                     "staff",
+                    session.get("user_id"),
                 ),
             )
         except Exception:
@@ -2719,10 +2874,10 @@ def owner_users_edit(staff_id):
                 form_data=form_data,
                 staff_positions=STAFF_POSITIONS,
                 staff_statuses=STAFF_STATUSES,
-                errors=["Email sudah digunakan akun lain. Gunakan email yang berbeda."],
+                errors=["Email sudah digunakan akun lain. Gunakan email kasir yang berbeda."],
             )
 
-        flash("Data staff berhasil diperbarui.", "success")
+        flash("Data kasir berhasil diperbarui.", "success")
         return redirect(url_for("owner_staff"))
 
     return render_template(
@@ -2779,7 +2934,7 @@ def pos():
     return render_template(
         "pos.html",
         shift=get_current_shift(),
-        staff_name=session.get("full_name", "Staff"),
+        staff_name=session.get("full_name", "Kasir"),
         menu_categories=get_pos_category_filters(active_categories),
         products=products,
     )
@@ -2792,7 +2947,7 @@ def pos_payment():
     return render_template(
         "pos_payment.html",
         shift=get_current_shift(),
-        staff_name=session.get("full_name", "Staff"),
+        staff_name=session.get("full_name", "Kasir"),
     )
 
 

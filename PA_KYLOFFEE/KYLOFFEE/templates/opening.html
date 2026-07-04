@@ -5,21 +5,21 @@
     <section class="opening-layout">
         <div class="opening-copy">
             <h1>Selamat Datang.</h1>
-            <p>Silahkan pilih peran anda untuk memulai sistem<br>POS Kyloffee</p>
+            <p>Pilih peran Anda untuk mulai menggunakan sistem POS Kylcoffee.</p>
         </div>
 
         <div class="role-grid">
             <a href="{{ url_for('register_owner') }}" class="role-card">
                 <span class="role-copy">
                     <strong>Owner</strong>
-                    <small>Buat toko baru dan kelola menu,<br>inventaris, serta staf Anda.</small>
+                    <small>Kelola menu dan kategori, pantau laporan keuangan, serta kelola kasir Anda.</small>
                 </span>
                 <span class="role-arrow" aria-hidden="true">&rarr;</span>
             </a>
-            <a href="{{ url_for('register_staff') }}" class="role-card">
+            <a href="{{ url_for('register_cashier') }}" class="role-card">
                 <span class="role-copy">
-                    <strong>Staff</strong>
-                    <small>Bergabung dengan tim yang sudah<br>ada? Masukkan kode undangan dari<br>Owner Anda.</small>
+                    <strong>Kasir</strong>
+                    <small>Daftarkan akun kasir. Kasir hanya dapat mengakses sistem POS.</small>
                 </span>
                 <span class="role-arrow" aria-hidden="true">&rarr;</span>
             </a>
@@ -27,7 +27,7 @@
 
         <div class="opening-login-row">
             <span>Sudah punya akun?</span>
-            <a href="{{ url_for('login') }}">MASUK KE DASHBOARD</a>
+            <a href="{{ url_for('login') }}">Masuk</a>
         </div>
     </section>
 </main>

@@ -74,7 +74,7 @@
                                             </td>
                                             <td>{{ menu.category }}</td>
                                             <td class="mono">{{ menu.code }}</td>
-                                            <td class="mono">Rp {{ "{:,.0f}".format(menu.price|int).replace(",", ".") }}</td>
+                                            <td class="mono">Rp{{ "{:,.0f}".format(menu.price|int).replace(",", ".") }}</td>
                                             <td>
                                                 {% if menu.is_active %}
                                                     <span class="status-badge status-badge--active">Aktif</span>
@@ -84,9 +84,6 @@
                                             </td>
                                             <td class="action-cell">
                                                 <a href="{{ url_for('owner_menu_edit', menu_id=menu.id) }}" class="icon-button" title="Edit menu">&#9998;</a>
-                                                <form action="{{ url_for('owner_menu_delete', menu_id=menu.id) }}" method="POST" class="delete-menu-form">
-                                                    <button type="submit" class="icon-button icon-button--danger" title="Hapus menu" onclick="return confirm('Hapus menu ini?')">&times;</button>
-                                                </form>
                                             </td>
                                         </tr>
                                     {% endfor %}

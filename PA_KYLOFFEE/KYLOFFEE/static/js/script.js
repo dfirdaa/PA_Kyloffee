@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function formatCurrency(amount) {
-        return "Rp " + Math.max(0, Math.round(Number(amount) || 0)).toLocaleString("id-ID");
+        return "Rp" + Math.max(0, Math.round(Number(amount) || 0)).toLocaleString("id-ID");
     }
 
     function parseAmount(input) {
