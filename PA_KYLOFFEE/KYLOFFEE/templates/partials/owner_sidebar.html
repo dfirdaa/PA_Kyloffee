@@ -29,6 +29,8 @@
             href="{{ url_for('owner_menu') }}"
             class="owner-nav__link {% if active_page == 'menu' %}active{% endif %}"
             data-owner-nav-link
+            data-tooltip="Menu Management"
+            title="Menu Management"
         >
             <span class="owner-nav__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false">
@@ -42,6 +44,8 @@
             href="{{ url_for('owner_categories') }}"
             class="owner-nav__link {% if active_page == 'categories' %}active{% endif %}"
             data-owner-nav-link
+            data-tooltip="Category Management"
+            title="Category Management"
         >
             <span class="owner-nav__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false">
@@ -55,6 +59,8 @@
             href="{{ url_for('owner_reports') }}"
             class="owner-nav__link {% if active_page == 'reports' %}active{% endif %}"
             data-owner-nav-link
+            data-tooltip="Financial Reports"
+            title="Financial Reports"
         >
             <span class="owner-nav__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false">
@@ -68,6 +74,8 @@
             href="{{ url_for('owner_staff') }}"
             class="owner-nav__link {% if active_page == 'staff' %}active{% endif %}"
             data-owner-nav-link
+            data-tooltip="Cashier Management"
+            title="Cashier Management"
         >
             <span class="owner-nav__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false">
@@ -78,7 +86,7 @@
         </a>
     </nav>
 
-    <a href="{{ url_for('logout') }}" class="owner-logout" data-owner-logout>
+    <a href="{{ url_for('logout') }}" class="owner-logout" data-owner-logout data-tooltip="Log Out" title="Log Out">
         <span class="owner-logout__icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false">
                 <path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" />

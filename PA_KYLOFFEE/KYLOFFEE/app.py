@@ -142,6 +142,9 @@ MIN_MENU_PRICE = 500
 CATEGORY_NAME_MAX_LENGTH = 100
 STAFF_POSITIONS = ["Kasir"]
 STAFF_STATUSES = ["Aktif", "Cuti", "Nonaktif"]
+CASHIER_ROLE = "staff"
+CASHIER_ROLE_ALIASES = ("staff", "kasir", "cashier")
+LEGACY_CASHIER_OWNER_WINDOW_MINUTES = int(os.getenv("LEGACY_CASHIER_OWNER_WINDOW_MINUTES", "120"))
 
 app = Flask(
     __name__,
@@ -272,6 +275,44 @@ def row_to_dict(row):
     return dict(row)
 
 
+def normalize_role_value(role):
+    role_key = str(role or "").strip().lower()
+    if role_key in CASHIER_ROLE_ALIASES:
+        return CASHIER_ROLE
+    return role_key
+
+
+def cashier_role_filter(column="role"):
+    placeholders = ", ".join(["?"] * len(CASHIER_ROLE_ALIASES))
+    return f"LOWER({column}) IN ({placeholders})"
+
+
+def parse_db_datetime(value):
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+
+    value = str(value or "").strip()
+    if not value:
+        return None
+
+    for candidate in (value, value.replace("Z", "+00:00")):
+        try:
+            parsed = datetime.fromisoformat(candidate)
+            return parsed.replace(tzinfo=None)
+        except ValueError:
+            continue
+
+    for date_format in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value[:19], date_format)
+        except ValueError:
+            continue
+
+    return None
+
+
 def normalize_category_name(value):
     return " ".join(str(value or "").strip().split())
 
@@ -307,43 +348,135 @@ def table_exists(table_name):
 
 
 def role_display_name(role):
-    role = str(role or "").strip().lower()
+    role = normalize_role_value(role)
     if role == "owner":
         return "Owner"
-    if role == "staff":
+    if role == CASHIER_ROLE:
         return "Kasir"
     return role.title() or "Pengguna"
 
 
-def attach_legacy_cashiers_to_single_owner():
+def normalize_cashier_rows():
+    execute_commit(
+        f"""
+        UPDATE users
+        SET role = ?
+        WHERE {cashier_role_filter("role")} AND LOWER(role) != ?
+        """,
+        (CASHIER_ROLE, *CASHIER_ROLE_ALIASES, CASHIER_ROLE),
+    )
+    execute_commit(
+        f"""
+        UPDATE users
+        SET staff_position = ?
+        WHERE {cashier_role_filter("role")}
+          AND (staff_position IS NULL OR TRIM(staff_position) = '' OR LOWER(TRIM(staff_position)) IN (?, ?))
+        """,
+        ("Kasir", *CASHIER_ROLE_ALIASES, "staff", "cashier"),
+    )
+    execute_commit(
+        f"""
+        UPDATE users
+        SET staff_status = ?
+        WHERE {cashier_role_filter("role")}
+          AND (staff_status IS NULL OR TRIM(staff_status) = '')
+        """,
+        ("Aktif", *CASHIER_ROLE_ALIASES),
+    )
+    execute_commit(
+        f"""
+        UPDATE users
+        SET joined_date = DATE(created_at)
+        WHERE {cashier_role_filter("role")}
+          AND (joined_date IS NULL OR TRIM(joined_date) = '')
+          AND created_at IS NOT NULL
+        """,
+        CASHIER_ROLE_ALIASES,
+    )
+
+
+def attach_legacy_cashiers_to_owner():
     db = get_db()
+    normalize_cashier_rows()
+
     owner_rows = fetch_all_dict(
         db.execute(
-            "SELECT id FROM users WHERE LOWER(role) = ? ORDER BY id ASC",
+            "SELECT id, created_at FROM users WHERE LOWER(role) = ? ORDER BY created_at ASC, id ASC",
             ("owner",),
         )
     )
+    if not owner_rows:
+        return
+
     if len(owner_rows) != 1:
+        orphan_cashiers = fetch_all_dict(
+            db.execute(
+                f"""
+                SELECT id, full_name, email, created_at
+                FROM users
+                WHERE {cashier_role_filter("role")} AND owner_id IS NULL
+                ORDER BY created_at ASC, id ASC
+                """,
+                CASHIER_ROLE_ALIASES,
+            )
+        )
+        parsed_owners = [
+            {**owner, "created_dt": parse_db_datetime(owner.get("created_at"))}
+            for owner in owner_rows
+        ]
+
+        for cashier in orphan_cashiers:
+            cashier_created = parse_db_datetime(cashier.get("created_at"))
+            if not cashier_created:
+                continue
+
+            candidates = [
+                owner
+                for owner in parsed_owners
+                if owner.get("created_dt") and owner["created_dt"] <= cashier_created
+            ]
+            if not candidates:
+                continue
+
+            owner = max(candidates, key=lambda item: item["created_dt"])
+            delta = cashier_created - owner["created_dt"]
+            if delta <= timedelta(minutes=LEGACY_CASHIER_OWNER_WINDOW_MINUTES):
+                execute_commit(
+                    f"""
+                    UPDATE users
+                    SET owner_id = ?
+                    WHERE id = ? AND {cashier_role_filter("role")} AND owner_id IS NULL
+                    """,
+                    (owner["id"], cashier["id"], *CASHIER_ROLE_ALIASES),
+                )
+                app.logger.info(
+                    "Linked legacy cashier %s (%s) to owner_id %s from creation-time proximity.",
+                    cashier.get("full_name"),
+                    cashier.get("email"),
+                    owner["id"],
+                )
         return
 
     execute_commit(
-        """
+        f"""
         UPDATE users
         SET owner_id = ?
-        WHERE LOWER(role) = ? AND owner_id IS NULL
+        WHERE {cashier_role_filter("role")} AND owner_id IS NULL
         """,
-        (owner_rows[0]["id"], "staff"),
+        (owner_rows[0]["id"], *CASHIER_ROLE_ALIASES),
     )
 
 
 def get_default_owner_id_for_cashier():
-    owner = row_to_dict(
+    owner_rows = fetch_all_dict(
         get_db().execute(
-            "SELECT id FROM users WHERE LOWER(role) = ? ORDER BY id ASC LIMIT 1",
+            "SELECT id FROM users WHERE LOWER(role) = ? ORDER BY id ASC",
             ("owner",),
-        ).fetchone()
+        )
     )
-    return owner.get("id") if owner else None
+    if len(owner_rows) == 1:
+        return owner_rows[0].get("id")
+    return None
 
 
 def ensure_category_columns():
@@ -690,7 +823,7 @@ def init_db():
         )
 
     ensure_user_columns()
-    attach_legacy_cashiers_to_single_owner()
+    attach_legacy_cashiers_to_owner()
 
 
 def ensure_menu_columns():
@@ -908,10 +1041,10 @@ def login_required(view_func):
 
 
 def redirect_for_role():
-    role = session.get("role")
+    role = normalize_role_value(session.get("role"))
     if role == "owner":
         return redirect(url_for("owner_menu"))
-    if role == "staff":
+    if role == CASHIER_ROLE:
         return redirect(url_for("pos"))
     session.clear()
     return redirect(url_for("login"))
@@ -923,7 +1056,7 @@ def staff_required(view_func):
         if not session.get("user_id"):
             flash("Silakan login terlebih dahulu.", "error")
             return redirect(url_for("login"))
-        if session.get("role") != "staff":
+        if normalize_role_value(session.get("role")) != CASHIER_ROLE:
             return redirect_for_role()
 
         user = get_db().execute(
@@ -931,7 +1064,7 @@ def staff_required(view_func):
             (session.get("user_id"),),
         ).fetchone()
         user_data = row_to_dict(user)
-        if not user_data or str(user_data.get("role") or "").strip().lower() != "staff":
+        if not user_data or normalize_role_value(user_data.get("role")) != CASHIER_ROLE:
             session.clear()
             flash("Sesi tidak valid. Silakan login ulang.", "error")
             return redirect(url_for("login"))
@@ -955,7 +1088,7 @@ def owner_required(view_func):
         if not session.get("user_id"):
             flash("Silakan login terlebih dahulu.", "error")
             return redirect(url_for("login"))
-        if session.get("role") != "owner":
+        if normalize_role_value(session.get("role")) != "owner":
             return redirect_for_role()
 
         user = get_db().execute(
@@ -963,7 +1096,7 @@ def owner_required(view_func):
             (session.get("user_id"),),
         ).fetchone()
         user_data = row_to_dict(user)
-        if not user_data or str(user_data.get("role") or "").strip().lower() != "owner":
+        if not user_data or normalize_role_value(user_data.get("role")) != "owner":
             session.clear()
             flash("Sesi tidak valid. Silakan login ulang.", "error")
             return redirect(url_for("login"))
@@ -1903,11 +2036,11 @@ def login():
             return render_template("login.html", email=email)
 
         user_data = row_to_dict(user)
-        user_role = str(user_data.get("role") or "").strip().lower()
-        if user_role == "staff" and int(user_data.get("is_active", 1) or 0) != 1:
+        user_role = normalize_role_value(user_data.get("role"))
+        if user_role == CASHIER_ROLE and int(user_data.get("is_active", 1) or 0) != 1:
             flash("Akun kasir ini sedang nonaktif. Silakan hubungi Owner.", "error")
             return render_template("login.html", email=email)
-        if user_role == "staff" and not user_data.get("owner_id"):
+        if user_role == CASHIER_ROLE and not user_data.get("owner_id"):
             flash("Akun kasir belum terhubung dengan Owner. Silakan hubungi Owner untuk dibuatkan ulang.", "error")
             return render_template("login.html", email=email)
 
@@ -1928,15 +2061,16 @@ def login():
 
 def register_user(role):
     init_db()
+    role = normalize_role_value(role)
     full_name = request.form.get("full_name", "").strip()
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "")
 
     errors = validate_auth_fields(full_name=full_name, email=email, password=password)
-    if role == "staff":
+    if role == CASHIER_ROLE:
         owner_id = get_default_owner_id_for_cashier()
         if not owner_id:
-            errors.append("Belum ada akun Owner. Daftarkan Owner terlebih dahulu sebelum membuat akun kasir.")
+            errors.append("Buat akun kasir dari halaman Manajemen Kasir Owner agar kasir terhubung ke Owner yang benar.")
     else:
         owner_id = None
 
@@ -1953,7 +2087,7 @@ def register_user(role):
     password_hash = generate_password_hash(password)
     db = get_db()
     try:
-        if role == "staff":
+        if role == CASHIER_ROLE:
             db.execute(
                 """
                 INSERT INTO users (
@@ -2707,25 +2841,29 @@ def owner_users():
         page = 1
 
     db = get_db()
-    offset = (page - 1) * per_page
+    role_where = cashier_role_filter("role")
     total = fetch_scalar(
         db.execute(
-            "SELECT COUNT(*) FROM users WHERE LOWER(role) = ? AND owner_id = ?",
-            ("staff", owner_id),
+            f"SELECT COUNT(*) FROM users WHERE {role_where} AND owner_id = ?",
+            (*CASHIER_ROLE_ALIASES, owner_id),
         )
     ) or 0
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    if total > 0 and page > total_pages:
+        return redirect(url_for("owner_staff", page=total_pages))
+
+    offset = (page - 1) * per_page
     staff_rows = db.execute(
-        """
+        f"""
         SELECT id, full_name, email, staff_phone, staff_position, joined_date, staff_status, is_active, created_at
         FROM users
-        WHERE LOWER(role) = ? AND owner_id = ?
+        WHERE {role_where} AND owner_id = ?
         ORDER BY id ASC
         LIMIT ? OFFSET ?
         """,
-        ("staff", owner_id, per_page, offset),
+        (*CASHIER_ROLE_ALIASES, owner_id, per_page, offset),
     ).fetchall()
 
-    total_pages = max(1, (total + per_page - 1) // per_page)
     return render_template(
         "owner_staff.html",
         owner_name=get_owner_name(),
@@ -2776,7 +2914,7 @@ def owner_users_add():
                     form_data["full_name"],
                     form_data["email"],
                     generate_password_hash(STAFF_DEFAULT_PASSWORD),
-                    "staff",
+                    CASHIER_ROLE,
                     session.get("user_id"),
                     form_data["staff_phone"],
                     "Kasir",
@@ -2813,13 +2951,14 @@ def owner_users_add():
 def owner_users_edit(staff_id):
     init_db()
     db = get_db()
+    role_where = cashier_role_filter("role")
     staff = db.execute(
-        """
+        f"""
         SELECT id, full_name, email, staff_phone, staff_position, joined_date, staff_status, is_active, created_at
         FROM users
-        WHERE id = ? AND LOWER(role) = ? AND owner_id = ?
+        WHERE id = ? AND {role_where} AND owner_id = ?
         """,
-        (staff_id, "staff", session.get("user_id")),
+        (staff_id, *CASHIER_ROLE_ALIASES, session.get("user_id")),
     ).fetchone()
 
     if staff is None:
@@ -2846,11 +2985,11 @@ def owner_users_edit(staff_id):
 
         try:
             execute_commit(
-                """
+                f"""
                 UPDATE users
                 SET full_name = ?, email = ?, staff_phone = ?, staff_position = ?,
                     joined_date = ?, staff_status = ?, is_active = ?
-                WHERE id = ? AND LOWER(role) = ? AND owner_id = ?
+                WHERE id = ? AND {role_where} AND owner_id = ?
                 """,
                 (
                     form_data["full_name"],
@@ -2861,7 +3000,7 @@ def owner_users_edit(staff_id):
                     form_data["staff_status"],
                     1 if form_data["is_active"] else 0,
                     staff_id,
-                    "staff",
+                    *CASHIER_ROLE_ALIASES,
                     session.get("user_id"),
                 ),
             )
