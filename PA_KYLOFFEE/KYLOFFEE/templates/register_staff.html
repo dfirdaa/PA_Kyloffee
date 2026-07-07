@@ -34,10 +34,25 @@
                 </div>
 
                 <div class="form-field">
+                    <label for="invite_code">Kode Undangan Owner</label>
+                    <input type="text" id="invite_code" name="invite_code" value="{{ invite_code|default('', true) }}" placeholder="KASIR-XXXXXX" autocomplete="off" required>
+                </div>
+
+                <div class="form-field">
                     <label for="password">Password</label>
                     <div class="password-wrap">
                         <input type="password" id="password" name="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="new-password" required>
                         <button type="button" class="password-toggle" data-toggle-password="password" aria-label="Lihat password">
+                            <span class="eye-icon" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-field">
+                    <label for="password_confirm">Konfirmasi Password</label>
+                    <div class="password-wrap">
+                        <input type="password" id="password_confirm" name="password_confirm" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="new-password" required>
+                        <button type="button" class="password-toggle" data-toggle-password="password_confirm" aria-label="Lihat password">
                             <span class="eye-icon" aria-hidden="true"></span>
                         </button>
                     </div>

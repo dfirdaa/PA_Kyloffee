@@ -33,10 +33,16 @@
                         <p class="page-subtitle">Kelola akun kasir dan akses POS mereka.</p>
                     </div>
 
-                    <a href="{{ url_for('owner_users_add') }}" class="primary-button staff-add-button">
-                        <span>+</span>
-                        Tambah Kasir
-                    </a>
+                    <div class="staff-actions-row">
+                        <a href="{{ url_for('owner_users_add') }}" class="secondary-button staff-add-button">
+                            <span>+</span>
+                            Tambah Kasir
+                        </a>
+                        <a href="{{ url_for('owner_staff_invite') }}" class="primary-button staff-add-button">
+                            <span>+</span>
+                            Buat Undangan Kasir
+                        </a>
+                    </div>
                 </div>
 
                 <section class="menu-table-card staff-table-card" aria-label="Daftar kasir Kyloffee">

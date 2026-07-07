@@ -767,6 +767,188 @@ def ensure_user_columns():
         execute_commit("CREATE INDEX IF NOT EXISTS idx_users_owner_id ON users (owner_id)")
 
 
+def ensure_cashier_invitation_table():
+    db = get_db()
+    if db.is_mysql:
+        execute_script_commit(
+            """
+            CREATE TABLE IF NOT EXISTS cashier_invitations (
+                id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                owner_id BIGINT NOT NULL,
+                invite_code VARCHAR(64) NOT NULL UNIQUE,
+                status VARCHAR(40) NOT NULL DEFAULT 'Aktif',
+                expires_at DATETIME,
+                used_at DATETIME,
+                used_by_cashier_id BIGINT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        if not db.execute(
+            "SHOW INDEX FROM cashier_invitations WHERE Key_name = ?",
+            ("idx_cashier_invitations_owner_id",),
+        ).fetchone():
+            execute_commit("CREATE INDEX idx_cashier_invitations_owner_id ON cashier_invitations (owner_id)")
+    else:
+        execute_script_commit(
+            """
+            CREATE TABLE IF NOT EXISTS cashier_invitations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_id INTEGER NOT NULL,
+                invite_code TEXT NOT NULL UNIQUE,
+                status TEXT NOT NULL DEFAULT 'Aktif',
+                expires_at TEXT,
+                used_at TEXT,
+                used_by_cashier_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_cashier_invitations_owner_id ON cashier_invitations (owner_id);
+            """
+        )
+
+
+def parse_iso_timestamp(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        try:
+            return datetime.strptime(str(value), "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+
+
+def normalize_invite_code(value):
+    value = str(value or "").strip().upper()
+    allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
+    cleaned = "".join(char for char in value if char in allowed)
+    return cleaned[:64]
+
+
+def attach_legacy_transaction_owner_ids():
+    db = get_db()
+    try:
+        execute_commit(
+            """
+            UPDATE pos_transactions
+            SET owner_id = (
+                SELECT owner_id FROM users WHERE users.id = pos_transactions.staff_id
+            )
+            WHERE owner_id IS NULL
+              AND staff_id IS NOT NULL
+            """
+        )
+    except Exception:
+        db.rollback()
+
+
+def create_cashier_invitation(owner_id, expires_days=7):
+    db = get_db()
+    invitation = None
+    for _ in range(5):
+        invite_code = f"KASIR-{uuid.uuid4().hex[:10].upper()}"
+        expires_at = (datetime.now() + timedelta(days=expires_days)).isoformat(timespec="seconds")
+        try:
+            cursor = db.execute(
+                """
+                INSERT INTO cashier_invitations (
+                    owner_id, invite_code, status, expires_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (owner_id, invite_code, "Aktif", expires_at),
+            )
+            db.commit()
+            invitation = {
+                "id": cursor.lastrowid,
+                "owner_id": owner_id,
+                "invite_code": invite_code,
+                "status": "Aktif",
+                "expires_at": expires_at,
+                "used_at": None,
+                "used_by_cashier_id": None,
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            break
+        except Exception:
+            db.rollback()
+            continue
+    if invitation is None:
+        raise RuntimeError("Gagal membuat kode undangan kasir. Silakan coba lagi.")
+    return invitation
+
+
+def get_cashier_invitation(invite_code):
+    invite_code = normalize_invite_code(invite_code)
+    if not invite_code:
+        return None
+    row = get_db().execute(
+        "SELECT * FROM cashier_invitations WHERE invite_code = ?",
+        (invite_code,),
+    ).fetchone()
+    if row is None:
+        return None
+    invitation = dict(row)
+    if invitation.get("status") == "Aktif" and invitation.get("expires_at"):
+        expires_at = parse_iso_timestamp(invitation["expires_at"])
+        if expires_at and expires_at < datetime.now():
+            invitation["status"] = "Kedaluwarsa"
+            try:
+                execute_commit(
+                    "UPDATE cashier_invitations SET status = ? WHERE id = ?",
+                    ("Kedaluwarsa", invitation["id"]),
+                )
+            except Exception:
+                pass
+    return invitation
+
+
+def get_owner_latest_invitation(owner_id):
+    row = get_db().execute(
+        "SELECT * FROM cashier_invitations WHERE owner_id = ? ORDER BY created_at DESC LIMIT 1",
+        (owner_id,),
+    ).fetchone()
+    return format_cashier_invitation(dict(row)) if row else None
+
+
+def get_owner_invitations(owner_id, limit=5):
+    rows = fetch_all_dict(
+        get_db().execute(
+            "SELECT * FROM cashier_invitations WHERE owner_id = ? ORDER BY created_at DESC LIMIT ?",
+            (owner_id, limit),
+        )
+    )
+    return [format_cashier_invitation(row) for row in rows]
+
+
+def format_cashier_invitation(invitation):
+    if not invitation:
+        return None
+    expires_at = parse_iso_timestamp(invitation.get("expires_at"))
+    used_at = parse_iso_timestamp(invitation.get("used_at"))
+    if invitation.get("status") == "Aktif" and expires_at and expires_at < datetime.now():
+        invitation["status"] = "Kedaluwarsa"
+    invitation["expires_at_display"] = expires_at.strftime("%Y-%m-%d %H:%M") if expires_at else "-"
+    invitation["used_at_display"] = used_at.strftime("%Y-%m-%d %H:%M") if used_at else "-"
+    invitation["is_active"] = invitation.get("status") == "Aktif"
+    return invitation
+
+
+def ensure_pos_transactions_columns():
+    db = get_db()
+    if db.is_mysql:
+        cursor = db.execute("SHOW COLUMNS FROM pos_transactions")
+        columns = {row[0] for row in cursor.fetchall()}
+        if "owner_id" not in columns:
+            execute_commit("ALTER TABLE pos_transactions ADD COLUMN owner_id BIGINT NULL")
+    else:
+        cursor = db.execute("PRAGMA table_info(pos_transactions)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "owner_id" not in columns:
+            execute_commit("ALTER TABLE pos_transactions ADD COLUMN owner_id INTEGER")
+
+
 def init_db():
     db = get_db()
 
@@ -824,6 +1006,7 @@ def init_db():
 
     ensure_user_columns()
     attach_legacy_cashiers_to_owner()
+    ensure_cashier_invitation_table()
 
 
 def ensure_menu_columns():
@@ -966,11 +1149,14 @@ def init_pos_tables():
                 total_amount BIGINT NOT NULL DEFAULT 0,
                 item_count INT NOT NULL DEFAULT 0,
                 status VARCHAR(40) NOT NULL DEFAULT 'Selesai',
+                owner_id BIGINT NULL,
                 staff_id BIGINT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        ensure_pos_transactions_columns()
+        attach_legacy_transaction_owner_ids()
         execute_script_commit(
             """
             CREATE TABLE IF NOT EXISTS pos_transaction_items (
@@ -1002,6 +1188,7 @@ def init_pos_tables():
                 total_amount INTEGER NOT NULL DEFAULT 0,
                 item_count INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'Selesai',
+                owner_id INTEGER,
                 staff_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -1018,6 +1205,8 @@ def init_pos_tables():
             );
             """
         )
+        ensure_pos_transactions_columns()
+    ensure_pos_transactions_columns()
 
 
 def get_owner_name():
@@ -1209,8 +1398,8 @@ def get_period_totals(start_date, end_date, owner_id=None):
     params = [start_date.isoformat(), end_date.isoformat()]
     if owner_id:
         owner_join = "LEFT JOIN users u ON u.id = t.staff_id"
-        owner_filter = "AND u.owner_id = ?"
-        params.append(owner_id)
+        owner_filter = "AND (t.owner_id = ? OR (t.owner_id IS NULL AND u.owner_id = ?))"
+        params.extend([owner_id, owner_id])
 
     row = row_to_dict(
         db.execute(
@@ -1261,8 +1450,8 @@ def fetch_daily_details(start_date, end_date, owner_id=None):
     params = [start_date.isoformat(), end_date.isoformat()]
     if owner_id:
         owner_join = "LEFT JOIN users u ON u.id = t.staff_id"
-        owner_filter = "AND u.owner_id = ?"
-        params.append(owner_id)
+        owner_filter = "AND (t.owner_id = ? OR (t.owner_id IS NULL AND u.owner_id = ?))"
+        params.extend([owner_id, owner_id])
 
     rows = fetch_all_dict(
         db.execute(
@@ -1303,8 +1492,8 @@ def fetch_recent_transactions(start_date, end_date, limit=5, owner_id=None):
     owner_filter = ""
     params = [start_date.isoformat(), end_date.isoformat()]
     if owner_id:
-        owner_filter = "AND u.owner_id = ?"
-        params.append(owner_id)
+        owner_filter = "AND (t.owner_id = ? OR (t.owner_id IS NULL AND u.owner_id = ?))"
+        params.extend([owner_id, owner_id])
     params.append(limit)
 
     rows = fetch_all_dict(
@@ -1359,8 +1548,8 @@ def fetch_hourly_sales(start_date, end_date, owner_id=None):
     params = [start_date.isoformat(), end_date.isoformat()]
     if owner_id:
         owner_join = "LEFT JOIN users u ON u.id = t.staff_id"
-        owner_filter = "AND u.owner_id = ?"
-        params.append(owner_id)
+        owner_filter = "AND (t.owner_id = ? OR (t.owner_id IS NULL AND u.owner_id = ?))"
+        params.extend([owner_id, owner_id])
 
     rows = fetch_all_dict(
         db.execute(
@@ -1880,14 +2069,15 @@ def create_pos_transaction(data):
     order_code = normalize_order_code(data.get("order_code")) or generate_order_code(now)
 
     try:
+        owner_id = session.get("owner_id")
         cursor = db.execute(
             """
             INSERT INTO pos_transactions (
                 order_code, transaction_date, transaction_time, customer_name,
                 payment_method, subtotal_amount, discount_amount, tax_amount,
-                operational_cost, total_amount, item_count, status, staff_id
+                operational_cost, total_amount, item_count, status, owner_id, staff_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 order_code,
@@ -1902,6 +2092,7 @@ def create_pos_transaction(data):
                 total_amount,
                 item_count,
                 "Selesai",
+                owner_id,
                 session.get("user_id"),
             ),
         )
@@ -2065,12 +2256,34 @@ def register_user(role):
     full_name = request.form.get("full_name", "").strip()
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "")
+    password_confirm = request.form.get("password_confirm", "")
+    staff_phone = request.form.get("staff_phone", "").strip()
+    invite_code = request.form.get("invite_code", "").strip()
 
     errors = validate_auth_fields(full_name=full_name, email=email, password=password)
+    if password != password_confirm:
+        errors.append("Password dan konfirmasi password harus sama.")
+
     if role == CASHIER_ROLE:
-        owner_id = get_default_owner_id_for_cashier()
-        if not owner_id:
-            errors.append("Buat akun kasir dari halaman Manajemen Kasir Owner agar kasir terhubung ke Owner yang benar.")
+        invitation = None
+        if not invite_code:
+            errors.append("Kode undangan owner wajib diisi untuk pendaftaran kasir.")
+            owner_id = None
+        else:
+            invitation = get_cashier_invitation(invite_code)
+            if not invitation:
+                errors.append("Kode undangan owner tidak valid.")
+                owner_id = None
+            elif invitation.get("status") != "Aktif":
+                errors.append("Kode undangan owner sudah tidak aktif atau sudah digunakan.")
+                owner_id = None
+            else:
+                expires_at = parse_iso_timestamp(invitation.get("expires_at"))
+                if expires_at and expires_at < datetime.now():
+                    errors.append("Kode undangan owner sudah kedaluwarsa.")
+                    owner_id = None
+                else:
+                    owner_id = invitation.get("owner_id")
     else:
         owner_id = None
 
@@ -2082,19 +2295,21 @@ def register_user(role):
             template_name,
             full_name=full_name,
             email=email,
+            staff_phone=staff_phone,
+            invite_code=invite_code,
         )
 
     password_hash = generate_password_hash(password)
     db = get_db()
     try:
         if role == CASHIER_ROLE:
-            db.execute(
+            cursor = db.execute(
                 """
                 INSERT INTO users (
                     full_name, email, password_hash, role, owner_id,
-                    staff_position, joined_date, staff_status, is_active
+                    staff_phone, staff_position, joined_date, staff_status, is_active
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     full_name,
@@ -2102,12 +2317,14 @@ def register_user(role):
                     password_hash,
                     role,
                     owner_id,
+                    staff_phone,
                     "Kasir",
                     datetime.now().date().isoformat(),
                     "Aktif",
                     1,
                 ),
             )
+            cashier_id = cursor.lastrowid
         else:
             cursor = db.execute(
                 """
@@ -2126,7 +2343,23 @@ def register_user(role):
             template_name,
             full_name=full_name,
             email=email,
+            staff_phone=staff_phone,
+            invite_code=invite_code,
         )
+
+    if role == CASHIER_ROLE and invitation:
+        try:
+            execute_commit(
+                "UPDATE cashier_invitations SET status = ?, used_at = ?, used_by_cashier_id = ? WHERE id = ?",
+                (
+                    "Digunakan",
+                    datetime.now().isoformat(timespec="seconds"),
+                    cashier_id,
+                    invitation["id"],
+                ),
+            )
+        except Exception:
+            pass
 
     role_label = role_display_name(role)
     flash(f"Registrasi {role_label} berhasil, silakan login.", "success")
@@ -2869,10 +3102,45 @@ def owner_users():
         owner_name=get_owner_name(),
         active_page="staff",
         staff_members=[format_staff_member(staff) for staff in staff_rows],
+        invitations=get_owner_invitations(session.get("user_id")),
         page=page,
         total_pages=total_pages,
         total=total,
         per_page=per_page,
+    )
+
+
+@app.route("/owner/staff/invite", methods=["GET", "POST"])
+@owner_required
+def owner_staff_invite():
+    init_db()
+    owner_id = session.get("user_id")
+    if request.method == "POST":
+        expires_days = request.form.get("expires_days", "7")
+        try:
+            expires_days = int(expires_days)
+            if expires_days < 1 or expires_days > 30:
+                raise ValueError()
+        except ValueError:
+            expires_days = 7
+        try:
+            invitation = create_cashier_invitation(owner_id, expires_days=expires_days)
+            flash("Kode undangan kasir berhasil dibuat.", "success")
+            return render_template(
+                "owner_staff_invite.html",
+                owner_name=get_owner_name(),
+                active_page="staff",
+                invitation=invitation,
+                invitations=get_owner_invitations(owner_id),
+            )
+        except Exception:
+            flash("Gagal membuat kode undangan. Silakan coba lagi.", "error")
+    return render_template(
+        "owner_staff_invite.html",
+        owner_name=get_owner_name(),
+        active_page="staff",
+        invitation=None,
+        invitations=get_owner_invitations(session.get("user_id")),
     )
 
 

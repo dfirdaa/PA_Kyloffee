@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Undangan Kasir - Kyloffee</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_shell.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/owner_menu_form.css') }}">
+</head>
+<body>
+    <div class="owner-page">
+        {% include 'partials/owner_sidebar.html' %}
+
+        <main class="owner-main">
+            <header class="owner-topbar">
+                <div class="owner-identity">Owner : <strong>{{ owner_name }}</strong></div>
+            </header>
+
+            <section class="owner-content owner-content--staff">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="flash-stack">
+                            {% for category, message in messages %}
+                                <div class="flash flash--{{ category }}">{{ message }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                <div class="page-heading page-heading--row staff-heading">
+                    <div>
+                        <h1>Undangan Kasir</h1>
+                        <p class="page-subtitle">Buat kode undangan untuk mendaftarkan kasir baru.</p>
+                    </div>
+                    <a href="{{ url_for('owner_staff') }}" class="secondary-button staff-add-button">
+                        Kembali ke Manajemen Kasir
+                    </a>
+                </div>
+
+                <section class="menu-table-card staff-table-card" aria-label="Undangan kasir">
+                    <div class="owner-invite-panel">
+                        <form action="{{ url_for('owner_staff_invite') }}" method="POST" class="auth-form auth-form--register">
+                            <div class="form-field">
+                                <label for="expires_days">Durasi Kode Undangan (hari)</label>
+                                <input type="number" id="expires_days" name="expires_days" value="7" min="1" max="30" required>
+                            </div>
+                            <button type="submit" class="primary-button">Buat Kode Undangan</button>
+                        </form>
+                    </div>
+
+                    {% if invitation %}
+                        <div class="invite-result-card">
+                            <h2>Kode Undangan Baru</h2>
+                            <p class="invite-code">{{ invitation.invite_code }}</p>
+                            <p>Berakhir pada: {{ invitation.expires_at_display }}</p>
+                            <p>Status: {{ invitation.status }}</p>
+                            <p>Bagikan kode ini kepada kasir agar mereka mendaftar melalui halaman <strong>/register/kasir</strong>.</p>
+                        </div>
+                    {% endif %}
+
+                    <div class="table-responsive">
+                        <table class="menu-table staff-table">
+                            <thead>
+                                <tr>
+                                    <th>Kode Undangan</th>
+                                    <th>Status</th>
+                                    <th>Berakhir</th>
+                                    <th>Digunakan Oleh</th>
+                                    <th>Dibuat Pada</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if invitations %}
+                                    {% for invitation in invitations %}
+                                        <tr>
+                                            <td>{{ invitation.invite_code }}</td>
+                                            <td>{{ invitation.status }}</td>
+                                            <td>{{ invitation.expires_at_display }}</td>
+                                            <td>{{ invitation.used_by_cashier_id or '-' }}</td>
+                                            <td>{{ invitation.created_at[:16].replace('T', ' ') if invitation.created_at else '-' }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="5" class="empty-state">
+                                            <div class="empty-state__icon">
+                                                <img src="{{ url_for('static', filename='assets/logo-coffee.png') }}" alt="">
+                                            </div>
+                                            <strong>Belum ada kode undangan.</strong>
+                                            <p>Buat kode undangan untuk mendaftarkan kasir baru.</p>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+        </main>
+    </div>
+</body>
+</html>
