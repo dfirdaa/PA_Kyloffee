@@ -9,6 +9,7 @@ from pathlib import Path
 from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
+import resend
 from flask import (
     Flask,
     flash,
@@ -38,6 +39,16 @@ except ImportError:  # pragma: no cover - app still runs before dependency insta
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE = BASE_DIR / "database.db"
 load_dotenv(BASE_DIR / ".env")
+
+
+# ======================
+# Resend Email Configuration
+# ======================
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "noreply@example.com").strip()
+
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 DB_HOST = os.getenv("DB_HOST", "").strip()
 DB_PORT = int(os.getenv("DB_PORT", "4000")) if os.getenv("DB_PORT") else 4000
@@ -173,7 +184,31 @@ if cloudinary and CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_AP
     )
 
 
+# ======================
+# Resend Email Helper
+# ======================
+def send_email(to_email, subject, html_content):
+    if not RESEND_API_KEY:
+        app.logger.warning("RESEND_API_KEY belum tersedia. Email tidak dikirim.")
+        return False
+
+    try:
+        resend.Emails.send(
+            {
+                "from": RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+            }
+        )
+        return True
+    except Exception as exc:
+        app.logger.error("Resend gagal mengirim email: %s", exc)
+        return False
+
+
 def get_db():
+
     """Get the database connection for the current Flask request.
 
     Priority:
@@ -2362,6 +2397,20 @@ def register_user(role):
             pass
 
     role_label = role_display_name(role)
+
+    send_email(
+        email,
+        "Registrasi Kyloffee Berhasil",
+        f"""
+        <h2>Halo {full_name}</h2>
+        <p>Akun Kyloffee kamu berhasil dibuat.</p>
+        <p>Role akun: <b>{role_label}</b></p>
+        <p>Silakan login menggunakan email dan password yang sudah didaftarkan.</p>
+        <br>
+        <p>Kyloffee Team</p>
+        """
+    )
+
     flash(f"Registrasi {role_label} berhasil, silakan login.", "success")
     session["registered_email"] = email
     return redirect(url_for("login", email=email))
